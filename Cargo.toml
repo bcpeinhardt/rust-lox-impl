@@ -1,0 +1,17 @@
+[package]
+name = "rust-lox-impl"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "rust_lox_impl"
+path = "src/lib/lib.rs"
+
+[[bin]]
+name = "rlox_one"
+path = "src/bin/rlox_one.rs"
+
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
