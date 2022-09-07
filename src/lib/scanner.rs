@@ -84,10 +84,10 @@ pub struct Token {
     /// It is null for most tokens and contains the Java "Object" for a given literal. We could mimic this a few ways (An enum describing valid Lox 
     /// literals and their Rust types, or a trait object, all wrapped in an Option for "nullability"), but I think the simplest solution is to refactor
     /// the Token class to not have a field called "literal". Instead, the TokenType variants String and Number can simply have their
-    /// underlying types associated with them.
-    token_type: TokenType,
-    lexeme: String,
-    line: usize,
+    /// underlying types associated with them. This will have ramifications in the Parser.
+    pub token_type: TokenType,
+    pub lexeme: String,
+    pub line: usize,
 }
 
 impl Token {

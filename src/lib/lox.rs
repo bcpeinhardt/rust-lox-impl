@@ -2,7 +2,9 @@ use std::env;
 use std::fs;
 use std::io::{self, BufRead, Write};
 
-use crate::scanner::Scanner;
+use crate::parser::Expr;
+use crate::parser::Parser;
+use crate::scanner::{Scanner, Token, TokenType};
 
 /// Effectively, the "Main" class. Handles the most top level operations on the Lox code.
 pub struct Lox {
@@ -79,14 +81,14 @@ impl Lox {
     fn run(&mut self, src: String) {
         let mut scanner = Scanner::new(src, self);
         let tokens = scanner.scan_tokens();
-
-        for token in tokens.iter() {
-            println!("{}", token);
-        }
+        let mut parser = Parser::new(tokens, self);
+        let expr = parser.parse();
 
         if self.had_error {
             std::process::exit(65);
         }
+
+        println!("{}", expr);
     }
 
     pub fn error(&mut self, line: usize, msg: String) {
@@ -97,4 +99,13 @@ impl Lox {
         eprintln!("[line {}] Error{}: {}", line, location, msg);
         self.had_error = true;
     }
+
+    pub fn error_token(&mut self, token: Token, msg: &str) {
+        if token.token_type == TokenType::Eof {
+            self.report(token.line, " at end".to_owned(), msg.to_owned());
+        } else {
+            self.report(token.line, format!(" at '{}'", token.lexeme), msg.to_owned());
+        }
+    }
+
 }
