@@ -2,6 +2,9 @@ use std::env;
 use std::fs;
 use std::io::{self, BufRead, Write};
 
+use crate::interpreter;
+use crate::interpreter::Interpreter;
+use crate::interpreter::RuntimeError;
 use crate::parser::Expr;
 use crate::parser::Parser;
 use crate::scanner::{Scanner, Token, TokenType};
@@ -9,14 +12,15 @@ use crate::scanner::{Scanner, Token, TokenType};
 /// Effectively, the "Main" class. Handles the most top level operations on the Lox code.
 pub struct Lox {
     had_error: bool,
+    had_runtime_error: bool,
 }
 
 impl Lox {
     pub fn new() -> Self {
-        Self { had_error: false }
+        Self { had_error: false, had_runtime_error: false }
     }
 
-    /// Handles parsing the command line arguments for the interpreter. 
+    /// Handles parsing the command line arguments for the interpreter.
     pub fn lox_main(&mut self) {
         let args: Vec<String> = env::args().collect();
 
@@ -51,7 +55,6 @@ impl Lox {
         let mut repl_active = true;
 
         while repl_active {
-
             // This print macro really ought to flush stdout
             print!("> ");
             io::stdout().flush().expect("Couldn't flush stdout");
@@ -88,7 +91,12 @@ impl Lox {
             std::process::exit(65);
         }
 
-        println!("{}", expr);
+        let mut interpreter = Interpreter::new(self);
+        interpreter.interpret(expr.clone().expect("Could not parse expression"));
+
+        if self.had_runtime_error {
+            std::process::exit(70);
+        }
     }
 
     pub fn error(&mut self, line: usize, msg: String) {
@@ -104,8 +112,16 @@ impl Lox {
         if token.token_type == TokenType::Eof {
             self.report(token.line, " at end".to_owned(), msg.to_owned());
         } else {
-            self.report(token.line, format!(" at '{}'", token.lexeme), msg.to_owned());
+            self.report(
+                token.line,
+                format!(" at '{}'", token.lexeme),
+                msg.to_owned(),
+            );
         }
     }
 
+    pub fn runtime_error(&mut self, error: RuntimeError) {
+        eprintln!("{} [line {}]", error.msg, error.token.line);
+        self.had_runtime_error = true;
+    }
 }

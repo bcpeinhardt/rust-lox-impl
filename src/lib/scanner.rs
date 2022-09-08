@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 
-use crate::{lox::Lox, util::{strip_quotes, is_digit, is_alpha, is_alpha_numeric}};
+use crate::{
+    lox::Lox,
+    util::{is_alpha, is_alpha_numeric, is_digit, strip_quotes},
+};
 
-/// Represents every valid Lox token. 
+/// Represents every valid Lox token.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
     // Single character tokens
@@ -53,7 +56,7 @@ pub enum TokenType {
     Eof,
 }
 
-/// Returns a Hashmap of all valid Lox keywords. 
+/// Returns a Hashmap of all valid Lox keywords.
 fn keywords() -> HashMap<String, TokenType> {
     let mut map = HashMap::new();
     map.insert("and".to_owned(), TokenType::And);
@@ -79,9 +82,8 @@ fn keywords() -> HashMap<String, TokenType> {
 /// Represents a valid Lox token.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
-
-    /// In the Java implementation, the Token class also has a field called "literal". 
-    /// It is null for most tokens and contains the Java "Object" for a given literal. We could mimic this a few ways (An enum describing valid Lox 
+    /// In the Java implementation, the Token class also has a field called "literal".
+    /// It is null for most tokens and contains the Java "Object" for a given literal. We could mimic this a few ways (An enum describing valid Lox
     /// literals and their Rust types, or a trait object, all wrapped in an Option for "nullability"), but I think the simplest solution is to refactor
     /// the Token class to not have a field called "literal". Instead, the TokenType variants String and Number can simply have their
     /// underlying types associated with them. This will have ramifications in the Parser.
@@ -91,7 +93,6 @@ pub struct Token {
 }
 
 impl Token {
-
     /// Standard constructor
     pub fn new(token_type: TokenType, lexeme: String, line: usize) -> Token {
         Self {
@@ -111,7 +112,6 @@ impl std::fmt::Display for Token {
 /// The scanner class is used to take raw source code as a string and produce a Vector of tokens, as well
 /// as to report any errors encountered in the process.
 pub struct Scanner<'a> {
-
     /// The scanner gets a mutable reference to the Lox class to allow for calling the
     /// error handling methods. I know this is a little weird but it was the easiest way
     /// to mimic the Java implementations error handling behavior (calling error methods in the Lox class from the Scanner).
@@ -137,7 +137,6 @@ pub struct Scanner<'a> {
 }
 
 impl<'a> Scanner<'a> {
-
     /// Generates a new scanner from the source code and a reference to the Lox class (for reporting errors that outlive the Scanner)
     pub fn new(source: String, lox: &'a mut Lox) -> Self {
         Self {
