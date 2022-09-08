@@ -150,7 +150,7 @@ impl<'a> Interpreter<'a> {
                     }
                 }
             },
-            TokenType::Equal => { 
+            TokenType::EqualEqual => { 
                 return Ok(LoxObject::Boolean(left == right));
             },
             TokenType::BangEqual => { 
