@@ -82,37 +82,41 @@ impl Lox {
 
     /// Takes the code through each step of the lifecycle (scanning, parsing, ...)
     fn run(&mut self, src: String) {
+
+        // Scan the source code into a list of Tokens
         let mut scanner = Scanner::new(src, self);
         let tokens = scanner.scan_tokens();
+
+        // Parse the Tokens into a syntax tree
         let mut parser = Parser::new(tokens, self);
         let expr = parser.parse();
 
+        // Exit if there were static errors
         if self.had_error {
             std::process::exit(65);
         }
 
+        // Use the Tree Walk Interpreter to evaluate the expression
         let mut interpreter = Interpreter::new(self);
         interpreter.interpret(expr.clone().expect("Could not parse expression"));
 
+        // Exit if there were Runtime errors
         if self.had_runtime_error {
             std::process::exit(70);
         }
     }
 
+    /// Report a static error given a line and a msg (Used from Scanner)
     pub fn error(&mut self, line: usize, msg: String) {
-        self.report(line, "".to_string(), msg);
+        self.static_error(line, "".to_string(), msg);
     }
 
-    pub fn report(&mut self, line: usize, location: String, msg: String) {
-        eprintln!("[line {}] Error{}: {}", line, location, msg);
-        self.had_error = true;
-    }
-
+    /// Report a static error given a token and a Msg (called from Parser)
     pub fn error_token(&mut self, token: Token, msg: &str) {
         if token.token_type == TokenType::Eof {
-            self.report(token.line, " at end".to_owned(), msg.to_owned());
+            self.static_error(token.line, " at end".to_owned(), msg.to_owned());
         } else {
-            self.report(
+            self.static_error(
                 token.line,
                 format!(" at '{}'", token.lexeme),
                 msg.to_owned(),
@@ -120,6 +124,13 @@ impl Lox {
         }
     }
 
+    /// Internal method for reporting a static error
+    fn static_error(&mut self, line: usize, location: String, msg: String) {
+        eprintln!("[line {}] Error{}: {}", line, location, msg);
+        self.had_error = true;
+    }
+
+    /// Report a runtime error (Called from the Interpreter)
     pub fn runtime_error(&mut self, error: RuntimeError) {
         eprintln!("{} [line {}]", error.msg, error.token.line);
         self.had_runtime_error = true;

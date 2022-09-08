@@ -1,9 +1,13 @@
+use std::convert::TryInto;
+
 use crate::{parser::Expr, object::LoxObject, scanner::{Token, TokenType}, lox::Lox};
 
 pub struct RuntimeError {
     pub token: Token,
     pub msg: String,
 }
+
+/// Any interpreter function which can error should report a Runtime Error for the 
 type InterpreterResult<T> = Result<T, RuntimeError>;
 
 impl RuntimeError {
@@ -38,6 +42,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    /// Top level function for evaluating an expression
     fn evaluate(&self, expr: Expr) -> InterpreterResult<LoxObject> {
         match expr {
             Expr::Binary(lhs, operator, rhs) => {
@@ -56,15 +61,20 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn evaluate_unary(&self, operator: Token, expr: Expr) -> InterpreterResult<LoxObject> { 
+    fn evaluate_unary(&self, operator: Token, expr: Expr) -> InterpreterResult<LoxObject> {
+        
+        // Evaluate the right hand side expression
         let right = self.evaluate(expr)?;
 
         match operator.token_type {
             TokenType::Bang => {
+                // !some_var should return a boolean based on whether the object
+                // conforms to Lox's conception of "truthiness"
                 Ok(LoxObject::Boolean(right.is_truthy()))
             },
             TokenType::Minus => { 
-                // The unary minus only applies to numbers
+                // The unary minus negates a number, but for anything else produces
+                // a Runtime Error
                 if let LoxObject::Number(n) = right {
                     Ok(LoxObject::Number(-n))
                 } else {
@@ -72,11 +82,13 @@ impl<'a> Interpreter<'a> {
                 }
             },
             _ => {
+                // No other operators other than ! and - can be used in a unary way.
                 Err(RuntimeError::new(operator.clone(), &format!("token '{}' cannot be used as unary", operator.lexeme)))
             }
         }
     }
 
+    /// Converts a binary expression into a LoxObject
     fn evaluate_binary(&self, lhs: Expr, operator: Token, rhs: Expr) -> InterpreterResult<LoxObject> { 
         let left = self.evaluate(lhs)?;
         let right = self.evaluate(rhs)?;
