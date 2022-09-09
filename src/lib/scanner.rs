@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    lox::Lox,
-    util::{is_alpha, is_alpha_numeric, is_digit, strip_quotes}, error::ErrorReporter,
+    error::StaticErrorReporter,
+    util::{is_alpha, is_alpha_numeric, is_digit, strip_quotes},
 };
 
 /// Represents every valid Lox token.
@@ -112,7 +112,6 @@ impl std::fmt::Display for Token {
 /// The scanner class is used to take raw source code as a string and produce a Vector of tokens, as well
 /// as to report any errors encountered in the process.
 pub struct Scanner {
-
     /// The original source code as a String
     source: String,
 
@@ -129,25 +128,24 @@ pub struct Scanner {
     /// is found in source.
     line: usize,
 
-    error_reporter: ErrorReporter
+    error_reporter: StaticErrorReporter,
 }
 
 impl Scanner {
     /// Generates a new scanner from the source code and a reference to the Lox class (for reporting errors that outlive the Scanner)
-    pub fn new(source: String, error_reporter: ErrorReporter) -> Self {
+    pub fn new(source: String, error_reporter: StaticErrorReporter) -> Self {
         Self {
             source,
             tokens: vec![],
             start: 0,
             current: 0,
             line: 1,
-            error_reporter: error_reporter
+            error_reporter,
         }
     }
 
     /// Scans the source code and produces a Vector of Tokens.
-    pub fn scan_tokens(mut self) -> (Vec<Token>, ErrorReporter) {
-
+    pub fn scan_tokens(mut self) -> (Vec<Token>, StaticErrorReporter) {
         while !self.is_at_end() {
             self.start = self.current;
             self.scan_token();
@@ -249,7 +247,8 @@ impl Scanner {
 
         // If we reach the ending quotation before the end of the file, consume it then add the String token. Otherwise, report the error.
         if self.is_at_end() {
-            self.error_reporter.error(self.line, "Unterminated String".to_owned());
+            self.error_reporter
+                .error(self.line, "Unterminated String".to_owned());
         } else {
             self.advance(); // Closing "
             self.add_token(TokenType::String(strip_quotes(self.get_current_lexeme())));

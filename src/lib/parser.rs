@@ -1,30 +1,30 @@
 use crate::{
-    lox::Lox,
-    scanner::{Token, TokenType}, expr::Expr, stmt::Stmt, error::{ErrorReporter, StaticResult, StaticError},
+    error::{StaticError, StaticErrorReporter, StaticResult},
+    grammar::{Expr, Stmt},
+    scanner::{Token, TokenType},
 };
 
 /// The parser is responsible for taking a list of tokens and turning them into an abstract syntax tree.
 pub struct Parser {
-
     /// The list of tokens to parse into a syntax tree
     tokens: Vec<Token>,
 
     /// An index of where we are in the token list.
     current: usize,
 
-    error_reporter: ErrorReporter
+    error_reporter: StaticErrorReporter,
 }
 
 impl Parser {
-    pub fn new(tokens: Vec<Token>, error_reporter: ErrorReporter) -> Self {
+    pub fn new(tokens: Vec<Token>, error_reporter: StaticErrorReporter) -> Self {
         Self {
             tokens,
             current: 0,
-            error_reporter
+            error_reporter,
         }
     }
 
-    pub fn parse(mut self) -> (Vec<Stmt>, ErrorReporter) {
+    pub fn parse(mut self) -> (Vec<Stmt>, StaticErrorReporter) {
         let mut statements = vec![];
 
         while !self.is_at_end() {
@@ -32,12 +32,12 @@ impl Parser {
                 statements.push(stmt)
             }
         }
-        
+
         (statements, self.error_reporter)
     }
 
     fn declaration(&mut self) -> Option<Stmt> {
-        let res = if self.advance_on(TokenType::Var) { 
+        let res = if self.advance_on(TokenType::Var) {
             self.var_declaration()
         } else {
             self.statement()
@@ -45,29 +45,47 @@ impl Parser {
 
         match res {
             Ok(stmt) => Some(stmt),
-            Err(e) => {
+            Err(_) => {
                 self.synchronize();
                 None
-            },
+            }
         }
     }
 
     fn var_declaration(&mut self) -> StaticResult<Stmt> {
         let name = self.advance_on_or_err(TokenType::Identifier, "Expected variable name.")?;
         let mut initializer = None;
-        if self.advance_on(TokenType::Equal) { 
+        if self.advance_on(TokenType::Equal) {
             initializer = Some(self.expression()?);
         }
-        self.advance_on_or_err(TokenType::SemiColon, "Expected ';' after variable declaration.")?;
+        self.advance_on_or_err(
+            TokenType::SemiColon,
+            "Expected ';' after variable declaration.",
+        )?;
         Ok(Stmt::VarDecl(name, initializer))
     }
 
-    fn statement(&mut self) -> StaticResult<Stmt> { 
-        if self.advance_on(TokenType::Print) { 
+    fn statement(&mut self) -> StaticResult<Stmt> {
+        if self.advance_on(TokenType::Print) {
             self.print_statement()
+        } else if self.advance_on(TokenType::LeftBrace) {
+            Ok(Stmt::Block(self.block_statement()?))
         } else {
             self.expression_statement()
         }
+    }
+
+    fn block_statement(&mut self) -> StaticResult<Vec<Stmt>> {
+        let mut statements = vec![];
+
+        while !self.is_at_end() && !self.current_token_is_a(TokenType::RightBrace) {
+            if let Some(stmt) = self.declaration() {
+                statements.push(stmt);
+            }
+        }
+
+        self.advance_on_or_err(TokenType::RightBrace, "Expected '}' after block")?;
+        Ok(statements)
     }
 
     fn print_statement(&mut self) -> StaticResult<Stmt> {
@@ -76,15 +94,35 @@ impl Parser {
         Ok(Stmt::Print(expr))
     }
 
-    fn expression_statement(&mut self) -> StaticResult<Stmt> { 
+    fn expression_statement(&mut self) -> StaticResult<Stmt> {
         let expr = self.expression()?;
         self.advance_on_or_err(TokenType::SemiColon, "Expected ';' after expression")?;
         Ok(Stmt::Expression(expr))
     }
 
-    /// expression -> equality
+    /// expression -> assignment
     fn expression(&mut self) -> StaticResult<Expr> {
-        Ok(self.equality()?)
+        Ok(self.assignment()?)
+    }
+
+    /// assignment -> some_var = assignment
+    ///             | equality
+    fn assignment(&mut self) -> StaticResult<Expr> {
+        // If we're looking as an assignment, this will trickle down to an Expr::Variable
+        let expr = self.equality()?;
+
+        if self.advance_on(TokenType::Equal) {
+            let equals = self.previous_token();
+            let value = self.assignment()?;
+
+            if let Expr::Variable(name) = expr {
+                return Ok(Expr::Assignment(name, Box::new(value)));
+            }
+
+            self.error(equals, "Invalid assignment target.");
+        }
+
+        Ok(expr)
     }
 
     /// equality -> comparison (( != | ==) comparison )*

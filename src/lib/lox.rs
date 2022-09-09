@@ -2,32 +2,29 @@ use std::env;
 use std::fs;
 use std::io::{self, BufRead, Write};
 
-use crate::error::ErrorReporter;
+use crate::error::StaticErrorReporter;
 use crate::interpreter::Interpreter;
 use crate::parser::Parser;
-use crate::scanner::{Scanner};
+use crate::scanner::Scanner;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum Mode {
     Repl,
-    Script
+    Script,
 }
 
 /// Effectively, the "Main" class. Handles the most top level operations on the Lox code.
 pub struct Lox {
-    error_reporter: ErrorReporter,
     interpreter: Interpreter,
     mode: Option<Mode>,
 }
 
 impl Lox {
     pub fn new() -> Self {
-        let error_reporter = ErrorReporter::new();
         let interpreter = Interpreter::new();
         Self {
-            error_reporter,
             interpreter,
-            mode: None
+            mode: None,
         }
     }
 
@@ -95,31 +92,34 @@ impl Lox {
 
     /// Takes the code through each step of the lifecycle (scanning, parsing, ...)
     fn run(&mut self, src: String) {
-
         let debug_mode = false;
 
+        let error_reporter = StaticErrorReporter::new();
+
         // Scan the source code into a list of Tokens
-        let scanner = Scanner::new(src, self.error_reporter.clone());
+        let scanner = Scanner::new(src, error_reporter);
         let (tokens, error_reporter) = scanner.scan_tokens();
-        self.error_reporter = error_reporter;
-        if debug_mode { println!("Tokens: {:?}", tokens); }
+        if debug_mode {
+            println!("Tokens: {:?}", tokens);
+        }
 
         // Parse the Tokens into a syntax tree
-        let parser = Parser::new(tokens, self.error_reporter.clone());
+        let parser = Parser::new(tokens, error_reporter);
         let (stmts, error_reporter) = parser.parse();
-        self.error_reporter = error_reporter;
-        if debug_mode { println!("Syntax Tree: {:?}", stmts.clone()); }
+        if debug_mode {
+            println!("Syntax Tree: {:?}", stmts.clone());
+        }
 
         // Exit if there were static errors
-        if self.error_reporter.had_static_error && self.mode == Some(Mode::Script) {
+        if error_reporter.had_error && self.mode == Some(Mode::Script) {
             std::process::exit(65);
         }
 
         // Use the Tree Walk Interpreter to evaluate the expression
-        self.error_reporter = self.interpreter.interpret(stmts.clone(), self.error_reporter.clone());
+        self.interpreter.interpret(stmts.clone());
 
         // Exit if there were Runtime errors
-        if self.error_reporter.had_runtime_error && self.mode == Some(Mode::Script) {
+        if self.interpreter.error_reporter.had_error && self.mode == Some(Mode::Script) {
             std::process::exit(70);
         }
     }

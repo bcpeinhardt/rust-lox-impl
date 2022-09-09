@@ -1,42 +1,16 @@
-use crate::{scanner::{Token, TokenType}};
+use crate::scanner::{Token, TokenType};
 
 pub type StaticError = ();
 pub type StaticResult<T> = Result<T, StaticError>;
 
-/// Create this error to represent an error which occurs at Runtime. 
-pub struct RuntimeError {
-    pub token: Token,
-    pub msg: String,
-}
-
-impl RuntimeError {
-
-    /// Create this error to represent an error which occurs at Runtime.
-    pub fn new(token: Token, msg: &str) -> Self {
-        Self {
-            token,
-            msg: msg.to_owned()
-        }
-    }
-}
-
-pub type RuntimeResult<T> = Result<T, RuntimeError>;
-
-/// The error reporter is essentially an enrichable object which is passed through the scanner, parser, and interpreter 
-/// for collecting errors that happen during these processes and responding to them at a time of our choosing.
-/// 
 #[derive(Debug, Clone)]
-pub struct ErrorReporter {
-    pub had_static_error: bool,
-    pub had_runtime_error: bool,
+pub struct StaticErrorReporter {
+    pub had_error: bool,
 }
 
-impl ErrorReporter { 
+impl StaticErrorReporter {
     pub fn new() -> Self {
-        Self {
-            had_static_error: false, 
-            had_runtime_error: false
-        }
+        Self { had_error: false }
     }
 
     /// Report a static error given a line and a msg (Used from Scanner)
@@ -60,12 +34,41 @@ impl ErrorReporter {
     /// Internal method for reporting a static error
     fn static_error(&mut self, line: usize, location: String, msg: String) {
         eprintln!("[line {}] Error{}: {}", line, location, msg);
-        self.had_static_error = true;
+        self.had_error = true;
+    }
+}
+
+/// Create this error to represent an error which occurs at Runtime.
+pub struct RuntimeError {
+    pub token: Token,
+    pub msg: String,
+}
+
+impl RuntimeError {
+    /// Create this error to represent an error which occurs at Runtime.
+    pub fn new(token: Token, msg: &str) -> Self {
+        Self {
+            token,
+            msg: msg.to_owned(),
+        }
+    }
+}
+
+pub type RuntimeResult<T> = Result<T, RuntimeError>;
+
+#[derive(Debug, Clone)]
+pub struct RuntimeErrorReporter {
+    pub had_error: bool,
+}
+
+impl RuntimeErrorReporter {
+    pub fn new() -> Self {
+        Self { had_error: false }
     }
 
     /// Report a runtime error (Called from the Interpreter)
     pub fn runtime_error(&mut self, error: RuntimeError) {
         eprintln!("{} [line {}]", error.msg, error.token.line);
-        self.had_runtime_error = true;
+        self.had_error = true;
     }
 }
