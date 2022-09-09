@@ -1,49 +1,77 @@
 use std::convert::TryInto;
 
-use crate::{parser::Expr, object::LoxObject, scanner::{Token, TokenType}, lox::Lox};
+use crate::{object::LoxObject, scanner::{Token, TokenType}, lox::Lox, environment::Environment, expr::Expr, stmt::Stmt, error::{ErrorReporter, RuntimeResult, RuntimeError}};
 
-pub struct RuntimeError {
-    pub token: Token,
-    pub msg: String,
+/// The interpreter is responsible for "running" the program. 
+pub struct Interpreter {
+
+    /// Used for the programs memory (storing and retrieving variables, etc)
+    environment: Environment
 }
 
-/// Any interpreter function which can error should report a Runtime Error for the 
-type InterpreterResult<T> = Result<T, RuntimeError>;
-
-impl RuntimeError {
-    pub fn new(token: Token, msg: &str) -> Self {
-        Self {
-            token,
-            msg: msg.to_owned()
-        }
-    }
-}
-
-pub struct Interpreter<'a> {
-    lox: &'a mut Lox
-}
-
-impl<'a> Interpreter<'a> {
+impl Interpreter {
     
-    pub fn new(lox: &'a mut Lox) -> Self {
+    /// Constructs a new interpreter for runnign a Lox program.
+    pub fn new() -> Self {
         Self {
-            lox
+            environment: Environment::new()
         }
     }
     
-    pub fn interpret(&mut self, expr: Expr) {
-        match self.evaluate(expr) {
-            Ok(object) => {
-                println!("{}", object)
-            },
-            Err(e) => {
-                self.lox.runtime_error(e);
-            },
+    pub fn interpret(&mut self, stmts: Vec<Stmt>, mut error_reporter: ErrorReporter) -> ErrorReporter {
+        for stmt in stmts.into_iter() {
+            match stmt {
+                Stmt::Expression(expr) => {
+                    match self.expression_statement(expr) {
+                        Ok(_) => {},
+                        Err(e) => {
+                            error_reporter.runtime_error(e);
+                        },
+                    }
+                },
+                Stmt::Print(expr) => {
+                    match self.print_statement(expr) {
+                        Ok(_) => {},
+                        Err(e) => {
+                            error_reporter.runtime_error(e);
+                        },
+                    }
+                },
+                Stmt::VarDecl(name, maybe_expr) => {
+                    match self.variable_statement(name, maybe_expr) {
+                        Ok(_) => {},
+                        Err(e) => {
+                            error_reporter.runtime_error(e);
+                        },
+                    }
+                },
+            }
         }
+        error_reporter
+    }
+
+    fn expression_statement(&mut self, expr: Expr) -> RuntimeResult<()> {
+        self.evaluate(expr)?;
+        Ok(())
+    }
+
+    fn print_statement(&mut self, expr: Expr) -> RuntimeResult<()> { 
+        let res = self.evaluate(expr)?;
+        println!("{}", res);
+        Ok(())
+    }
+
+    fn variable_statement(&mut self, name: Token, initializer: Option<Expr>) -> RuntimeResult<()> { 
+        let mut value = LoxObject::Nil;
+        if let Some(expr) = initializer {
+            value = self.evaluate(expr)?;
+        }
+        self.environment.define(&name.lexeme, value);
+        Ok(())
     }
 
     /// Top level function for evaluating an expression
-    fn evaluate(&self, expr: Expr) -> InterpreterResult<LoxObject> {
+    fn evaluate(&self, expr: Expr) -> RuntimeResult<LoxObject> {
         match expr {
             Expr::Binary(lhs, operator, rhs) => {
                 self.evaluate_binary(*lhs, operator, *rhs)
@@ -58,10 +86,14 @@ impl<'a> Interpreter<'a> {
             Expr::Unary(operator, e) => {
                 self.evaluate_unary(operator, *e)
             },
+            Expr::Variable(token) => {
+                self.environment.get(token)
+            },
         }
     }
 
-    fn evaluate_unary(&self, operator: Token, expr: Expr) -> InterpreterResult<LoxObject> {
+    /// Converts a unary expression into a LoxObject
+    fn evaluate_unary(&self, operator: Token, expr: Expr) -> RuntimeResult<LoxObject> {
         
         // Evaluate the right hand side expression
         let right = self.evaluate(expr)?;
@@ -70,7 +102,7 @@ impl<'a> Interpreter<'a> {
             TokenType::Bang => {
                 // !some_var should return a boolean based on whether the object
                 // conforms to Lox's conception of "truthiness"
-                Ok(LoxObject::Boolean(right.is_truthy()))
+                Ok(LoxObject::Boolean(!right.is_truthy()))
             },
             TokenType::Minus => { 
                 // The unary minus negates a number, but for anything else produces
@@ -89,77 +121,73 @@ impl<'a> Interpreter<'a> {
     }
 
     /// Converts a binary expression into a LoxObject
-    fn evaluate_binary(&self, lhs: Expr, operator: Token, rhs: Expr) -> InterpreterResult<LoxObject> { 
+    fn evaluate_binary(&self, lhs: Expr, operator: Token, rhs: Expr) -> RuntimeResult<LoxObject> { 
+
+        // Evaluate tje left and right expressions.
         let left = self.evaluate(lhs)?;
         let right = self.evaluate(rhs)?;
 
         match operator.token_type {
             TokenType::Minus => {
                 // Applies to numbers only
-                if let LoxObject::Number(left_num) = left {
-                    if let LoxObject::Number(right_num) = right {
-                        return Ok(LoxObject::Number(left_num - right_num));
-                    }
+                if let (LoxObject::Number(l), LoxObject::Number(r)) = (left, right) {
+                    Ok(LoxObject::Number(l - r))
+                } else {
+                    Err(RuntimeError::new(operator, "Can only subtract number types"))
                 }
             },
             TokenType::Plus => { 
-                // Adds Numbers
-                if let LoxObject::Number(left_num) = left {
-                    if let LoxObject::Number(right_num) = right {
-                        return Ok(LoxObject::Number(left_num + right_num));
-                    }
-                }
-
-                // Concatenates strings
-                if let LoxObject::String(left_str) = left { 
-                    if let LoxObject::String(right_str) = right { 
-                        let mut buf = String::new();
-                        buf.push_str(&left_str);
-                        buf.push_str(&right_str);
-                        return Ok(LoxObject::String(buf));
-                    }
+                if let (LoxObject::Number(l), LoxObject::Number(r)) = (left.clone(), right.clone()) {
+                    // Adds Numbers
+                    Ok(LoxObject::Number(l + r))
+                } else if let (LoxObject::String(mut l), LoxObject::String(r)) = (left, right) { 
+                    // Concatenates strings
+                    l.push_str(&r);
+                    Ok(LoxObject::String(l))
+                } else {
+                    Err(RuntimeError::new(operator, "Can only add number + number or concatenate string + string"))
                 }
             },
             TokenType::Star => { 
-                if let LoxObject::Number(left_num) = left {
-                    if let LoxObject::Number(right_num) = right {
-                        return Ok(LoxObject::Number(left_num * right_num));
-                    }
+                if let (LoxObject::Number(l), LoxObject::Number(r)) = (left, right) {
+                    Ok(LoxObject::Number(l * r))
+                } else {
+                    Err(RuntimeError::new(operator, "Can only multiply number types"))
                 }
             },
             TokenType::Slash => {
-                if let LoxObject::Number(left_num) = left {
-                    if let LoxObject::Number(right_num) = right {
-                        return Ok(LoxObject::Number(left_num / right_num));
-                    }
+                if let (LoxObject::Number(l), LoxObject::Number(r)) = (left, right) {
+                    Ok(LoxObject::Number(l / r))
+                } else {
+                    Err(RuntimeError::new(operator, "Can only divide number types"))
                 }
             },
             TokenType::Greater => {
-                if let LoxObject::Number(left_num) = left {
-                    if let LoxObject::Number(right_num) = right {
-                        return Ok(LoxObject::Boolean(left_num > right_num));
-                    }
+                if let (LoxObject::Number(l), LoxObject::Number(r)) = (left, right) {
+                    return Ok(LoxObject::Boolean(l > r));
+                } else {
+                    Err(RuntimeError::new(operator, "Can only compare number types with >"))
                 }
             },
             TokenType::GreaterEqual => { 
-                if let LoxObject::Number(left_num) = left {
-                    if let LoxObject::Number(right_num) = right {
-                        return Ok(LoxObject::Boolean(left_num >= right_num));
-                    }
+                if let (LoxObject::Number(l), LoxObject::Number(r)) = (left, right) {
+                    return Ok(LoxObject::Boolean(l >= r));
+                } else {
+                    Err(RuntimeError::new(operator, "Can only compare number types with >="))
                 }
             },
             TokenType::Less => { 
-                if let LoxObject::Number(left_num) = left {
-                    if let LoxObject::Number(right_num) = right {
-                        return Ok(LoxObject::Boolean(left_num < right_num));
-                    }
+                if let (LoxObject::Number(l), LoxObject::Number(r)) = (left, right) {
+                    return Ok(LoxObject::Boolean(l < r));
+                } else {
+                    Err(RuntimeError::new(operator, "Can only compare number types with <"))
                 }
             },
             TokenType::LessEqual => { 
-                if let LoxObject::Number(left_num) = left {
-                    if let LoxObject::Number(right_num) = right {
-                        return Ok(LoxObject::Boolean(left_num <= right_num));
-                    }
+                if let (LoxObject::Number(l), LoxObject::Number(r)) = (left, right) {
+                    return Ok(LoxObject::Boolean(l <= r));
+                } else {
+                    Err(RuntimeError::new(operator, "Can only compare number types with <="))
                 }
             },
             TokenType::EqualEqual => { 
@@ -170,14 +198,13 @@ impl<'a> Interpreter<'a> {
             }
             _ => {
                 // Error out at the end of the match
+                Err(RuntimeError::new(operator.clone(), &format!("Cannot use token {} for binary operation", operator.lexeme)))
             }
         }
-
-        Err(RuntimeError::new(operator, "Invalid expression"))
     }
 
     /// Transform an Expr::Literal's token into a LoxObject
-    fn evaluate_literal(&self, token: Token) -> InterpreterResult<LoxObject> { 
+    fn evaluate_literal(&self, token: Token) -> RuntimeResult<LoxObject> { 
         match token.token_type {
             TokenType::String(s) => Ok(LoxObject::String(s)),
             TokenType::Number(n) => Ok(LoxObject::Number(n)),

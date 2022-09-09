@@ -1,8 +1,5 @@
-use std::convert::TryFrom;
-
-/// I tried to get by without something to replace Java's java.lang.Object, utilizing 
-/// Rusts powerful enums to enhance scanner::TokenType and parser::Expr to not require it.
-/// But I think that we're going to end up needing something for the interpreter. 
+/// The job of this enum is essentially to map Lox Objects to Rust types. It is our replacement 
+/// for the use of java.lang.Object in the Interpreter. 
 #[derive(Debug, Clone, PartialEq)]
 pub enum LoxObject {
     String(String),
@@ -10,12 +7,6 @@ pub enum LoxObject {
     Boolean(bool),
     Nil
 }
-
-trait LoxObjectInner {}
-impl LoxObjectInner for String {}
-impl LoxObjectInner for f64 {}
-impl LoxObjectInner for bool {}
-impl LoxObjectInner for () {}
 
 impl std::fmt::Display for LoxObject {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -37,20 +28,22 @@ impl std::fmt::Display for LoxObject {
 }
 
 impl LoxObject {
+
+    /// Function casts a LoxObject to a bool
     pub fn is_truthy(&self) -> bool { 
         match self {
-            LoxObject::Boolean(b) => *b,
-            LoxObject::Nil => false,
-            _ => true
-        }
-    }
 
-    pub fn downcast(self) -> Box<impl LoxObjectInner> {
-        match self {
-            LoxObject::String(s) => Box::new(s),
-            LoxObject::Number(n) => todo!(),
-            LoxObject::Boolean(_) => todo!(),
-            LoxObject::Nil => todo!(),
+            // Boolean is its own value
+            LoxObject::Boolean(b) => *b,
+
+            // Nil is False
+            LoxObject::Nil => false,
+
+            // Zero is false
+            LoxObject::Number(n) => *n != 0f64,
+
+            // Everything else is true
+            _ => true
         }
     }
 }

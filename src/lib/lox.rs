@@ -2,22 +2,33 @@ use std::env;
 use std::fs;
 use std::io::{self, BufRead, Write};
 
-use crate::interpreter;
+use crate::error::ErrorReporter;
 use crate::interpreter::Interpreter;
-use crate::interpreter::RuntimeError;
-use crate::parser::Expr;
 use crate::parser::Parser;
-use crate::scanner::{Scanner, Token, TokenType};
+use crate::scanner::{Scanner};
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum Mode {
+    Repl,
+    Script
+}
 
 /// Effectively, the "Main" class. Handles the most top level operations on the Lox code.
 pub struct Lox {
-    had_error: bool,
-    had_runtime_error: bool,
+    error_reporter: ErrorReporter,
+    interpreter: Interpreter,
+    mode: Option<Mode>,
 }
 
 impl Lox {
     pub fn new() -> Self {
-        Self { had_error: false, had_runtime_error: false }
+        let error_reporter = ErrorReporter::new();
+        let interpreter = Interpreter::new();
+        Self {
+            error_reporter,
+            interpreter,
+            mode: None
+        }
     }
 
     /// Handles parsing the command line arguments for the interpreter.
@@ -38,6 +49,7 @@ impl Lox {
 
     /// Reads the contents of a file as a string and passes it to the run function.
     fn run_file(&mut self, filename: &str) {
+        self.mode = Some(Mode::Script);
         let file_contents = fs::read_to_string(filename);
         match file_contents {
             Ok(code) => self.run(code),
@@ -52,6 +64,7 @@ impl Lox {
 
     /// Passes stdin to the run function line by line.
     fn run_prompt(&mut self) {
+        self.mode = Some(Mode::Repl);
         let mut repl_active = true;
 
         while repl_active {
@@ -83,56 +96,31 @@ impl Lox {
     /// Takes the code through each step of the lifecycle (scanning, parsing, ...)
     fn run(&mut self, src: String) {
 
+        let debug_mode = false;
+
         // Scan the source code into a list of Tokens
-        let mut scanner = Scanner::new(src, self);
-        let tokens = scanner.scan_tokens();
+        let scanner = Scanner::new(src, self.error_reporter.clone());
+        let (tokens, error_reporter) = scanner.scan_tokens();
+        self.error_reporter = error_reporter;
+        if debug_mode { println!("Tokens: {:?}", tokens); }
 
         // Parse the Tokens into a syntax tree
-        let mut parser = Parser::new(tokens, self);
-        let expr = parser.parse();
+        let parser = Parser::new(tokens, self.error_reporter.clone());
+        let (stmts, error_reporter) = parser.parse();
+        self.error_reporter = error_reporter;
+        if debug_mode { println!("Syntax Tree: {:?}", stmts.clone()); }
 
         // Exit if there were static errors
-        if self.had_error {
+        if self.error_reporter.had_static_error && self.mode == Some(Mode::Script) {
             std::process::exit(65);
         }
 
         // Use the Tree Walk Interpreter to evaluate the expression
-        let mut interpreter = Interpreter::new(self);
-        interpreter.interpret(expr.clone().expect("Could not parse expression"));
+        self.error_reporter = self.interpreter.interpret(stmts.clone(), self.error_reporter.clone());
 
         // Exit if there were Runtime errors
-        if self.had_runtime_error {
+        if self.error_reporter.had_runtime_error && self.mode == Some(Mode::Script) {
             std::process::exit(70);
         }
-    }
-
-    /// Report a static error given a line and a msg (Used from Scanner)
-    pub fn error(&mut self, line: usize, msg: String) {
-        self.static_error(line, "".to_string(), msg);
-    }
-
-    /// Report a static error given a token and a Msg (called from Parser)
-    pub fn error_token(&mut self, token: Token, msg: &str) {
-        if token.token_type == TokenType::Eof {
-            self.static_error(token.line, " at end".to_owned(), msg.to_owned());
-        } else {
-            self.static_error(
-                token.line,
-                format!(" at '{}'", token.lexeme),
-                msg.to_owned(),
-            );
-        }
-    }
-
-    /// Internal method for reporting a static error
-    fn static_error(&mut self, line: usize, location: String, msg: String) {
-        eprintln!("[line {}] Error{}: {}", line, location, msg);
-        self.had_error = true;
-    }
-
-    /// Report a runtime error (Called from the Interpreter)
-    pub fn runtime_error(&mut self, error: RuntimeError) {
-        eprintln!("{} [line {}]", error.msg, error.token.line);
-        self.had_runtime_error = true;
     }
 }

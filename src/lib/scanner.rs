@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     lox::Lox,
-    util::{is_alpha, is_alpha_numeric, is_digit, strip_quotes},
+    util::{is_alpha, is_alpha_numeric, is_digit, strip_quotes}, error::ErrorReporter,
 };
 
 /// Represents every valid Lox token.
@@ -111,13 +111,7 @@ impl std::fmt::Display for Token {
 
 /// The scanner class is used to take raw source code as a string and produce a Vector of tokens, as well
 /// as to report any errors encountered in the process.
-pub struct Scanner<'a> {
-    /// The scanner gets a mutable reference to the Lox class to allow for calling the
-    /// error handling methods. I know this is a little weird but it was the easiest way
-    /// to mimic the Java implementations error handling behavior (calling error methods in the Lox class from the Scanner).
-    /// An alternative might be to pass an error collecting struct of some kind through each phase (scanning, parsing, etc) as the
-    /// book mentions, but I think the current solutions works well enough.
-    lox: &'a mut Lox,
+pub struct Scanner {
 
     /// The original source code as a String
     source: String,
@@ -134,23 +128,26 @@ pub struct Scanner<'a> {
     /// The line is really only kept for error handling. Incremented every time a \n
     /// is found in source.
     line: usize,
+
+    error_reporter: ErrorReporter
 }
 
-impl<'a> Scanner<'a> {
+impl Scanner {
     /// Generates a new scanner from the source code and a reference to the Lox class (for reporting errors that outlive the Scanner)
-    pub fn new(source: String, lox: &'a mut Lox) -> Self {
+    pub fn new(source: String, error_reporter: ErrorReporter) -> Self {
         Self {
-            lox,
             source,
             tokens: vec![],
             start: 0,
             current: 0,
             line: 1,
+            error_reporter: error_reporter
         }
     }
 
     /// Scans the source code and produces a Vector of Tokens.
-    pub fn scan_tokens(&mut self) -> Vec<Token> {
+    pub fn scan_tokens(mut self) -> (Vec<Token>, ErrorReporter) {
+
         while !self.is_at_end() {
             self.start = self.current;
             self.scan_token();
@@ -159,7 +156,8 @@ impl<'a> Scanner<'a> {
         // Add an automatic EOF token when the end of the source code is reached.
         self.tokens
             .push(Token::new(TokenType::Eof, "".to_owned(), self.line));
-        self.tokens.clone()
+
+        (self.tokens, self.error_reporter)
     }
 
     /// Handles scanning in any single token.
@@ -231,7 +229,7 @@ impl<'a> Scanner<'a> {
                 self.identifier_or_keyword();
             }
             _ => {
-                self.lox
+                self.error_reporter
                     .error(self.line, "Unexpected Character.".to_owned());
             }
         }
@@ -251,7 +249,7 @@ impl<'a> Scanner<'a> {
 
         // If we reach the ending quotation before the end of the file, consume it then add the String token. Otherwise, report the error.
         if self.is_at_end() {
-            self.lox.error(self.line, "Unterminated String".to_owned());
+            self.error_reporter.error(self.line, "Unterminated String".to_owned());
         } else {
             self.advance(); // Closing "
             self.add_token(TokenType::String(strip_quotes(self.get_current_lexeme())));

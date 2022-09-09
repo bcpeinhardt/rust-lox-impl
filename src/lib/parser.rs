@@ -1,50 +1,10 @@
 use crate::{
     lox::Lox,
-    scanner::{Token, TokenType},
+    scanner::{Token, TokenType}, expr::Expr, stmt::Stmt, error::{ErrorReporter, StaticResult, StaticError},
 };
 
-/// The Java implementation uses a visitor pattern and some metaprogramming to generate
-/// Classes for the expression variants and implement a recursive display.
-/// Because this is Rust, we can probably just use an enum and implement std::fmt::Display 
-/// to save ourselve a bit of complexity. (Even though Rust macros are dope and its always
-/// fun to write them). Again, rather than trying to implement a replacement for Java's
-/// object type, for the Literal we just store then entire token.  
-#[derive(Debug, Clone)]
-pub enum Expr {
-    Binary(Box<Expr>, Token, Box<Expr>),
-    Grouping(Box<Expr>),
-    Literal(Token),
-    Unary(Token, Box<Expr>),
-}
-
-impl std::fmt::Display for Expr {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Expr::Binary(lhs, token, rhs) => {
-                write!(f, "({} {} {})", token.lexeme, lhs, rhs)
-            }
-            Expr::Grouping(expr) => {
-                write!(f, "(group {})", expr)
-            }
-            Expr::Literal(token) => {
-                write!(f, "{}", token.lexeme)
-            }
-            Expr::Unary(token, expr) => {
-                write!(f, "({} {})", token.lexeme, expr)
-            }
-        }
-    }
-}
-
-/// The parser has two avenues of error reporting:
-/// 1. Uses the reference to the calling Lox instance to trigger an error report.
-/// 2. Returning a Parse Error which is handled inside the parser. This is meant to replace the exception 
-/// structure in the java implementation.
-type ParseError = ();
-type ParseResult<T> = Result<T, ParseError>;
-
 /// The parser is responsible for taking a list of tokens and turning them into an abstract syntax tree.
-pub struct Parser<'a> {
+pub struct Parser {
 
     /// The list of tokens to parse into a syntax tree
     tokens: Vec<Token>,
@@ -52,30 +12,83 @@ pub struct Parser<'a> {
     /// An index of where we are in the token list.
     current: usize,
 
-    /// For calling error reporting methods in the calling Lox instance.
-    lox: &'a mut Lox,
+    error_reporter: ErrorReporter
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(tokens: Vec<Token>, lox: &'a mut Lox) -> Self {
+impl Parser {
+    pub fn new(tokens: Vec<Token>, error_reporter: ErrorReporter) -> Self {
         Self {
             tokens,
             current: 0,
-            lox,
+            error_reporter
         }
     }
 
-    pub fn parse(&mut self) -> Option<Expr> {
-        self.expression().ok()
+    pub fn parse(mut self) -> (Vec<Stmt>, ErrorReporter) {
+        let mut statements = vec![];
+
+        while !self.is_at_end() {
+            if let Some(stmt) = self.declaration() {
+                statements.push(stmt)
+            }
+        }
+        
+        (statements, self.error_reporter)
+    }
+
+    fn declaration(&mut self) -> Option<Stmt> {
+        let res = if self.advance_on(TokenType::Var) { 
+            self.var_declaration()
+        } else {
+            self.statement()
+        };
+
+        match res {
+            Ok(stmt) => Some(stmt),
+            Err(e) => {
+                self.synchronize();
+                None
+            },
+        }
+    }
+
+    fn var_declaration(&mut self) -> StaticResult<Stmt> {
+        let name = self.advance_on_or_err(TokenType::Identifier, "Expected variable name.")?;
+        let mut initializer = None;
+        if self.advance_on(TokenType::Equal) { 
+            initializer = Some(self.expression()?);
+        }
+        self.advance_on_or_err(TokenType::SemiColon, "Expected ';' after variable declaration.")?;
+        Ok(Stmt::VarDecl(name, initializer))
+    }
+
+    fn statement(&mut self) -> StaticResult<Stmt> { 
+        if self.advance_on(TokenType::Print) { 
+            self.print_statement()
+        } else {
+            self.expression_statement()
+        }
+    }
+
+    fn print_statement(&mut self) -> StaticResult<Stmt> {
+        let expr = self.expression()?;
+        self.advance_on_or_err(TokenType::SemiColon, "Expected ';' after value")?;
+        Ok(Stmt::Print(expr))
+    }
+
+    fn expression_statement(&mut self) -> StaticResult<Stmt> { 
+        let expr = self.expression()?;
+        self.advance_on_or_err(TokenType::SemiColon, "Expected ';' after expression")?;
+        Ok(Stmt::Expression(expr))
     }
 
     /// expression -> equality
-    fn expression(&mut self) -> ParseResult<Expr> {
+    fn expression(&mut self) -> StaticResult<Expr> {
         Ok(self.equality()?)
     }
 
     /// equality -> comparison (( != | ==) comparison )*
-    fn equality(&mut self) -> ParseResult<Expr> {
+    fn equality(&mut self) -> StaticResult<Expr> {
         let mut expr = self.comparison()?;
         while self.advance_on_any_of(vec![TokenType::BangEqual, TokenType::EqualEqual]) {
             let operator = self.previous_token();
@@ -86,7 +99,7 @@ impl<'a> Parser<'a> {
     }
 
     /// comparison -> term (( > | >= | < | <= ) term)*
-    fn comparison(&mut self) -> ParseResult<Expr> {
+    fn comparison(&mut self) -> StaticResult<Expr> {
         let mut expr = self.term()?;
         while self.advance_on_any_of(vec![
             TokenType::GreaterEqual,
@@ -102,7 +115,7 @@ impl<'a> Parser<'a> {
     }
 
     /// term -> factor ((+ | - ) factor)*
-    fn term(&mut self) -> ParseResult<Expr> {
+    fn term(&mut self) -> StaticResult<Expr> {
         let mut expr = self.factor()?;
         while self.advance_on_any_of(vec![TokenType::Plus, TokenType::Minus]) {
             let operator = self.previous_token();
@@ -113,7 +126,7 @@ impl<'a> Parser<'a> {
     }
 
     /// factor -> unary (( / | * ) unary)*
-    fn factor(&mut self) -> ParseResult<Expr> {
+    fn factor(&mut self) -> StaticResult<Expr> {
         let mut expr = self.unary()?;
         while self.advance_on_any_of(vec![TokenType::Slash, TokenType::Star]) {
             let operator = self.previous_token();
@@ -125,7 +138,7 @@ impl<'a> Parser<'a> {
 
     /// unary -> ( ! | - ) unary
     ///        | primary ;
-    fn unary(&mut self) -> ParseResult<Expr> {
+    fn unary(&mut self) -> StaticResult<Expr> {
         if self.advance_on_any_of(vec![TokenType::Bang, TokenType::Minus]) {
             let operator = self.previous_token();
             let right = self.unary()?;
@@ -137,8 +150,10 @@ impl<'a> Parser<'a> {
 
     /// primary -> NUMBER | STRING | true | false | nil
     ///          | ( expression )
-    fn primary(&mut self) -> ParseResult<Expr> {
-        if self.advance_on(TokenType::LeftParen) {
+    fn primary(&mut self) -> StaticResult<Expr> {
+        if self.advance_on(TokenType::Identifier) {
+            Ok(Expr::Variable(self.previous_token()))
+        } else if self.advance_on(TokenType::LeftParen) {
             // Handle a grouping
             let expr = self.expression()?;
             self.advance_on_or_err(TokenType::RightParen, "Expected ')' after expression.")?;
@@ -162,7 +177,7 @@ impl<'a> Parser<'a> {
 
     /// Will advance the current token if it has the given token type, otherwise
     /// it will produce an error with the given message.
-    fn advance_on_or_err(&mut self, tt: TokenType, msg: &str) -> ParseResult<Token> {
+    fn advance_on_or_err(&mut self, tt: TokenType, msg: &str) -> StaticResult<Token> {
         if self.current_token_is_a(tt) {
             Ok(self.advance())
         } else {
@@ -173,8 +188,8 @@ impl<'a> Parser<'a> {
 
     /// Reports the error to the calling lox instance, then returns the relevant ParseError
     /// for the Parser.
-    fn error(&mut self, token: Token, msg: &str) -> ParseError {
-        self.lox.error_token(token, msg);
+    fn error(&mut self, token: Token, msg: &str) -> StaticError {
+        self.error_reporter.error_token(token, msg);
         ()
     }
 
