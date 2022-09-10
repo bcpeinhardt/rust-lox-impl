@@ -1,10 +1,15 @@
 use crate::{
-    error::{StaticError, StaticErrorReporter, StaticResult},
+    error::{
+        error_reporter::ErrorReporter,
+        parse_error::{ParseError, ParseErrorCtx},
+    },
     grammar::{Expr, Stmt},
-    scanner::{Token, TokenType},
+    token::{Token, TokenType},
 };
 
-/// The parser is responsible for taking a list of tokens and turning them into an abstract syntax tree.
+pub type StaticResult<T> = Result<T, ParseError>;
+
+/// The parser is responsible for taking a list of tokens and turning them into a syntax tree.
 pub struct Parser {
     /// The list of tokens to parse into a syntax tree
     tokens: Vec<Token>,
@@ -12,11 +17,14 @@ pub struct Parser {
     /// An index of where we are in the token list.
     current: usize,
 
-    error_reporter: StaticErrorReporter,
+    /// Enrichable object for tracking static errors through scanning and parsing
+    error_reporter: ErrorReporter,
 }
 
 impl Parser {
-    pub fn new(tokens: Vec<Token>, error_reporter: StaticErrorReporter) -> Self {
+    /// Takes a list of tokens to be parsed and a StaticErrorReporter object to be enriched
+    /// with errors encountered in the parsing process.
+    pub fn new(tokens: Vec<Token>, error_reporter: ErrorReporter) -> Self {
         Self {
             tokens,
             current: 0,
@@ -24,7 +32,7 @@ impl Parser {
         }
     }
 
-    pub fn parse(mut self) -> (Vec<Stmt>, StaticErrorReporter) {
+    pub fn parse(mut self) -> (Vec<Stmt>, ErrorReporter) {
         let mut statements = vec![];
 
         while !self.is_at_end() {
@@ -45,7 +53,8 @@ impl Parser {
 
         match res {
             Ok(stmt) => Some(stmt),
-            Err(_) => {
+            Err(e) => {
+                self.error_reporter.error(e);
                 self.synchronize();
                 None
             }
@@ -53,15 +62,12 @@ impl Parser {
     }
 
     fn var_declaration(&mut self) -> StaticResult<Stmt> {
-        let name = self.advance_on_or_err(TokenType::Identifier, "Expected variable name.")?;
+        let name = self.advance_on_or_err(TokenType::Identifier)?;
         let mut initializer = None;
         if self.advance_on(TokenType::Equal) {
             initializer = Some(self.expression()?);
         }
-        self.advance_on_or_err(
-            TokenType::SemiColon,
-            "Expected ';' after variable declaration.",
-        )?;
+        self.advance_on_or_err(TokenType::SemiColon)?;
         Ok(Stmt::VarDecl(name, initializer))
     }
 
@@ -84,19 +90,19 @@ impl Parser {
             }
         }
 
-        self.advance_on_or_err(TokenType::RightBrace, "Expected '}' after block")?;
+        self.advance_on_or_err(TokenType::RightBrace)?;
         Ok(statements)
     }
 
     fn print_statement(&mut self) -> StaticResult<Stmt> {
         let expr = self.expression()?;
-        self.advance_on_or_err(TokenType::SemiColon, "Expected ';' after value")?;
+        self.advance_on_or_err(TokenType::SemiColon)?;
         Ok(Stmt::Print(expr))
     }
 
     fn expression_statement(&mut self) -> StaticResult<Stmt> {
         let expr = self.expression()?;
-        self.advance_on_or_err(TokenType::SemiColon, "Expected ';' after expression")?;
+        self.advance_on_or_err(TokenType::SemiColon)?;
         Ok(Stmt::Expression(expr))
     }
 
@@ -119,7 +125,10 @@ impl Parser {
                 return Ok(Expr::Assignment(name, Box::new(value)));
             }
 
-            self.error(equals, "Invalid assignment target.");
+            self.error_reporter
+                .error(ParseError::InvalidAssignmentTarget(ParseErrorCtx {
+                    token: equals,
+                }))
         }
 
         Ok(expr)
@@ -194,7 +203,7 @@ impl Parser {
         } else if self.advance_on(TokenType::LeftParen) {
             // Handle a grouping
             let expr = self.expression()?;
-            self.advance_on_or_err(TokenType::RightParen, "Expected ')' after expression.")?;
+            self.advance_on_or_err(TokenType::RightParen)?;
             Ok(Expr::Grouping(Box::new(expr)))
         } else if self.advance_on_any_of(vec![TokenType::True, TokenType::False, TokenType::Nil]) {
             // Handle bool or nil
@@ -207,28 +216,26 @@ impl Parser {
                 Ok(Expr::Literal(self.advance()))
             } else {
                 // We've reached the bottom of the grammar and we don't know what expression this is.
-                self.error(self.current_token(), "Expected expression");
-                Err(())
+                Err(ParseError::ExpectedExpression(ParseErrorCtx {
+                    token: self.current_token(),
+                }))
             }
         }
     }
 
     /// Will advance the current token if it has the given token type, otherwise
     /// it will produce an error with the given message.
-    fn advance_on_or_err(&mut self, tt: TokenType, msg: &str) -> StaticResult<Token> {
-        if self.current_token_is_a(tt) {
+    fn advance_on_or_err(&mut self, tt: TokenType) -> StaticResult<Token> {
+        if self.current_token_is_a(tt.clone()) {
             Ok(self.advance())
         } else {
-            self.error(self.current_token(), msg);
-            Err(())
+            Err(ParseError::ExpectedDifferentToken(
+                ParseErrorCtx {
+                    token: self.current_token(),
+                },
+                tt,
+            ))
         }
-    }
-
-    /// Reports the error to the calling lox instance, then returns the relevant ParseError
-    /// for the Parser.
-    fn error(&mut self, token: Token, msg: &str) -> StaticError {
-        self.error_reporter.error_token(token, msg);
-        ()
     }
 
     /// Tries to bring the parser to a statement boundary when an error is encountered.

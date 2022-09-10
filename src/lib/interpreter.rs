@@ -1,9 +1,9 @@
 use crate::{
     environment::Environment,
-    error::{RuntimeError, RuntimeErrorReporter, RuntimeResult},
+    error::error_reporter::{RuntimeError, RuntimeErrorReporter, RuntimeResult},
     grammar::{Expr, Stmt},
     object::LoxObject,
-    scanner::{Token, TokenType},
+    token::{Token, TokenType},
 };
 
 /// The interpreter is responsible for "running" the program.
@@ -15,7 +15,7 @@ pub struct Interpreter {
 }
 
 impl Interpreter {
-    /// Constructs a new interpreter for runnign a Lox program.
+    /// Constructs a new interpreter for running a Lox program.
     pub fn new() -> Self {
         Self {
             environment: Environment::new(None),

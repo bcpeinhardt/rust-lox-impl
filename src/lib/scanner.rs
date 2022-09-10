@@ -1,113 +1,11 @@
-use std::collections::HashMap;
-
 use crate::{
-    error::StaticErrorReporter,
-    util::{is_alpha, is_alpha_numeric, is_digit, strip_quotes},
+    error::{
+        error_reporter::ErrorReporter,
+        scan_error::{ScanError, ScanErrorCtx},
+    },
+    token::{Token, TokenType},
+    util::{is_alpha, is_alpha_numeric, is_digit, keywords, strip_quotes},
 };
-
-/// Represents every valid Lox token.
-#[derive(Debug, Clone, PartialEq)]
-pub enum TokenType {
-    // Single character tokens
-    LeftParen,
-    RightParen,
-    LeftBrace,
-    RightBrace,
-    Comma,
-    Dot,
-    Minus,
-    Plus,
-    SemiColon,
-    Slash,
-    Star,
-
-    // One or two character tokens
-    Bang,
-    BangEqual,
-    Equal,
-    EqualEqual,
-    GreaterEqual,
-    Greater,
-    Less,
-    LessEqual,
-
-    // Literals
-    Identifier,
-    String(String),
-    Number(f64),
-
-    // Keywords
-    And,
-    Class,
-    Else,
-    False,
-    Fun,
-    For,
-    If,
-    Nil,
-    Or,
-    Print,
-    Return,
-    Super,
-    This,
-    True,
-    Var,
-    While,
-    Eof,
-}
-
-/// Returns a Hashmap of all valid Lox keywords.
-fn keywords() -> HashMap<String, TokenType> {
-    let mut map = HashMap::new();
-    map.insert("and".to_owned(), TokenType::And);
-    map.insert("class".to_owned(), TokenType::Class);
-    map.insert("else".to_owned(), TokenType::Else);
-    map.insert("false".to_owned(), TokenType::False);
-    map.insert("for".to_owned(), TokenType::For);
-    map.insert("fun".to_owned(), TokenType::Fun);
-    map.insert("if".to_owned(), TokenType::If);
-    map.insert("nil".to_owned(), TokenType::Nil);
-    map.insert("or".to_owned(), TokenType::Or);
-    map.insert("print".to_owned(), TokenType::Print);
-    map.insert("return".to_owned(), TokenType::Return);
-    map.insert("super".to_owned(), TokenType::Super);
-    map.insert("this".to_owned(), TokenType::This);
-    map.insert("true".to_owned(), TokenType::True);
-    map.insert("var".to_owned(), TokenType::Var);
-    map.insert("while".to_owned(), TokenType::While);
-
-    map
-}
-
-/// Represents a valid Lox token.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Token {
-    /// In the Java implementation, the Token class also has a field called "literal".
-    /// It is null for most tokens and contains the Java "Object" for a given literal. We could mimic this a few ways (An enum describing valid Lox
-    /// literals and their Rust types, or a trait object, all wrapped in an Option for "nullability"), but I think the simplest solution is to refactor
-    /// the Token class to not have a field called "literal". Instead, the TokenType variants String and Number can simply have their
-    /// underlying types associated with them. This will have ramifications in the Parser.
-    pub token_type: TokenType,
-    pub lexeme: String,
-    pub line: usize,
-}
-
-impl Token {
-    /// Standard constructor
-    pub fn new(token_type: TokenType, lexeme: String, line: usize) -> Token {
-        Self {
-            token_type,
-            lexeme,
-            line,
-        }
-    }
-}
-
-impl std::fmt::Display for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:?} {}", self.token_type, self.lexeme)
-    }
-}
 
 /// The scanner class is used to take raw source code as a string and produce a Vector of tokens, as well
 /// as to report any errors encountered in the process.
@@ -128,12 +26,13 @@ pub struct Scanner {
     /// is found in source.
     line: usize,
 
-    error_reporter: StaticErrorReporter,
+    /// Enrichable object for tracking static errors through scanning and parsing
+    error_reporter: ErrorReporter,
 }
 
 impl Scanner {
     /// Generates a new scanner from the source code and a reference to the Lox class (for reporting errors that outlive the Scanner)
-    pub fn new(source: String, error_reporter: StaticErrorReporter) -> Self {
+    pub fn new(source: String, error_reporter: ErrorReporter) -> Self {
         Self {
             source,
             tokens: vec![],
@@ -145,7 +44,7 @@ impl Scanner {
     }
 
     /// Scans the source code and produces a Vector of Tokens.
-    pub fn scan_tokens(mut self) -> (Vec<Token>, StaticErrorReporter) {
+    pub fn scan_tokens(mut self) -> (Vec<Token>, ErrorReporter) {
         while !self.is_at_end() {
             self.start = self.current;
             self.scan_token();
@@ -228,7 +127,9 @@ impl Scanner {
             }
             _ => {
                 self.error_reporter
-                    .error(self.line, "Unexpected Character.".to_owned());
+                    .error(ScanError::UnexpectedCharacter(ScanErrorCtx {
+                        line: self.line,
+                    }));
             }
         }
     }
@@ -248,7 +149,9 @@ impl Scanner {
         // If we reach the ending quotation before the end of the file, consume it then add the String token. Otherwise, report the error.
         if self.is_at_end() {
             self.error_reporter
-                .error(self.line, "Unterminated String".to_owned());
+                .error(ScanError::UnterminatedString(ScanErrorCtx {
+                    line: self.line,
+                }));
         } else {
             self.advance(); // Closing "
             self.add_token(TokenType::String(strip_quotes(self.get_current_lexeme())));

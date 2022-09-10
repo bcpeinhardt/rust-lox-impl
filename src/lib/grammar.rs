@@ -1,4 +1,4 @@
-use crate::scanner::Token;
+use crate::token::Token;
 
 /// Represents the grammar for expressions in Lox. The parse construct these from a list of tokens,
 /// and the interpreter evaluates them.

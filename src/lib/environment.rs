@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use crate::{
-    error::{RuntimeError, RuntimeResult},
+    error::error_reporter::{RuntimeError, RuntimeResult},
     object::LoxObject,
-    scanner::Token,
+    token::Token,
 };
 
 /// The environment is responsible for the memory of the program. Each instance of the interpreter gets

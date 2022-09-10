@@ -2,7 +2,8 @@ use std::env;
 use std::fs;
 use std::io::{self, BufRead, Write};
 
-use crate::error::StaticErrorReporter;
+use crate::error::error_reporter::ErrorReporter;
+use crate::error::error_reporter::StaticErrorReporter;
 use crate::interpreter::Interpreter;
 use crate::parser::Parser;
 use crate::scanner::Scanner;
@@ -94,7 +95,7 @@ impl Lox {
     fn run(&mut self, src: String) {
         let debug_mode = false;
 
-        let error_reporter = StaticErrorReporter::new();
+        let error_reporter = ErrorReporter::new();
 
         // Scan the source code into a list of Tokens
         let scanner = Scanner::new(src, error_reporter);
