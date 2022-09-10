@@ -3,7 +3,6 @@ use std::fs;
 use std::io::{self, BufRead, Write};
 
 use crate::error::error_reporter::ErrorReporter;
-use crate::error::error_reporter::StaticErrorReporter;
 use crate::interpreter::Interpreter;
 use crate::parser::Parser;
 use crate::scanner::Scanner;

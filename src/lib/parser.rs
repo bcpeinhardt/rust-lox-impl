@@ -7,7 +7,7 @@ use crate::{
     token::{Token, TokenType},
 };
 
-pub type StaticResult<T> = Result<T, ParseError>;
+pub type ParseResult<T> = Result<T, ParseError>;
 
 /// The parser is responsible for taking a list of tokens and turning them into a syntax tree.
 pub struct Parser {
@@ -61,7 +61,7 @@ impl Parser {
         }
     }
 
-    fn var_declaration(&mut self) -> StaticResult<Stmt> {
+    fn var_declaration(&mut self) -> ParseResult<Stmt> {
         let name = self.advance_on_or_err(TokenType::Identifier)?;
         let mut initializer = None;
         if self.advance_on(TokenType::Equal) {
@@ -71,7 +71,7 @@ impl Parser {
         Ok(Stmt::VarDecl(name, initializer))
     }
 
-    fn statement(&mut self) -> StaticResult<Stmt> {
+    fn statement(&mut self) -> ParseResult<Stmt> {
         if self.advance_on(TokenType::Print) {
             self.print_statement()
         } else if self.advance_on(TokenType::LeftBrace) {
@@ -81,7 +81,7 @@ impl Parser {
         }
     }
 
-    fn block_statement(&mut self) -> StaticResult<Vec<Stmt>> {
+    fn block_statement(&mut self) -> ParseResult<Vec<Stmt>> {
         let mut statements = vec![];
 
         while !self.is_at_end() && !self.current_token_is_a(TokenType::RightBrace) {
@@ -94,26 +94,26 @@ impl Parser {
         Ok(statements)
     }
 
-    fn print_statement(&mut self) -> StaticResult<Stmt> {
+    fn print_statement(&mut self) -> ParseResult<Stmt> {
         let expr = self.expression()?;
         self.advance_on_or_err(TokenType::SemiColon)?;
         Ok(Stmt::Print(expr))
     }
 
-    fn expression_statement(&mut self) -> StaticResult<Stmt> {
+    fn expression_statement(&mut self) -> ParseResult<Stmt> {
         let expr = self.expression()?;
         self.advance_on_or_err(TokenType::SemiColon)?;
         Ok(Stmt::Expression(expr))
     }
 
     /// expression -> assignment
-    fn expression(&mut self) -> StaticResult<Expr> {
+    fn expression(&mut self) -> ParseResult<Expr> {
         Ok(self.assignment()?)
     }
 
     /// assignment -> some_var = assignment
     ///             | equality
-    fn assignment(&mut self) -> StaticResult<Expr> {
+    fn assignment(&mut self) -> ParseResult<Expr> {
         // If we're looking as an assignment, this will trickle down to an Expr::Variable
         let expr = self.equality()?;
 
@@ -135,7 +135,7 @@ impl Parser {
     }
 
     /// equality -> comparison (( != | ==) comparison )*
-    fn equality(&mut self) -> StaticResult<Expr> {
+    fn equality(&mut self) -> ParseResult<Expr> {
         let mut expr = self.comparison()?;
         while self.advance_on_any_of(vec![TokenType::BangEqual, TokenType::EqualEqual]) {
             let operator = self.previous_token();
@@ -146,7 +146,7 @@ impl Parser {
     }
 
     /// comparison -> term (( > | >= | < | <= ) term)*
-    fn comparison(&mut self) -> StaticResult<Expr> {
+    fn comparison(&mut self) -> ParseResult<Expr> {
         let mut expr = self.term()?;
         while self.advance_on_any_of(vec![
             TokenType::GreaterEqual,
@@ -162,7 +162,7 @@ impl Parser {
     }
 
     /// term -> factor ((+ | - ) factor)*
-    fn term(&mut self) -> StaticResult<Expr> {
+    fn term(&mut self) -> ParseResult<Expr> {
         let mut expr = self.factor()?;
         while self.advance_on_any_of(vec![TokenType::Plus, TokenType::Minus]) {
             let operator = self.previous_token();
@@ -173,7 +173,7 @@ impl Parser {
     }
 
     /// factor -> unary (( / | * ) unary)*
-    fn factor(&mut self) -> StaticResult<Expr> {
+    fn factor(&mut self) -> ParseResult<Expr> {
         let mut expr = self.unary()?;
         while self.advance_on_any_of(vec![TokenType::Slash, TokenType::Star]) {
             let operator = self.previous_token();
@@ -185,7 +185,7 @@ impl Parser {
 
     /// unary -> ( ! | - ) unary
     ///        | primary ;
-    fn unary(&mut self) -> StaticResult<Expr> {
+    fn unary(&mut self) -> ParseResult<Expr> {
         if self.advance_on_any_of(vec![TokenType::Bang, TokenType::Minus]) {
             let operator = self.previous_token();
             let right = self.unary()?;
@@ -197,7 +197,7 @@ impl Parser {
 
     /// primary -> NUMBER | STRING | true | false | nil
     ///          | ( expression )
-    fn primary(&mut self) -> StaticResult<Expr> {
+    fn primary(&mut self) -> ParseResult<Expr> {
         if self.advance_on(TokenType::Identifier) {
             Ok(Expr::Variable(self.previous_token()))
         } else if self.advance_on(TokenType::LeftParen) {
@@ -225,7 +225,7 @@ impl Parser {
 
     /// Will advance the current token if it has the given token type, otherwise
     /// it will produce an error with the given message.
-    fn advance_on_or_err(&mut self, tt: TokenType) -> StaticResult<Token> {
+    fn advance_on_or_err(&mut self, tt: TokenType) -> ParseResult<Token> {
         if self.current_token_is_a(tt.clone()) {
             Ok(self.advance())
         } else {
