@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    error::error_reporter::{RuntimeError, RuntimeResult},
+    error::runtime_error::{RuntimeError, RuntimeErrorCtx},
+    interpreter::RuntimeResult,
     object::LoxObject,
     token::Token,
 };
@@ -42,9 +43,11 @@ impl Environment {
         } else if let Some(ref mut env) = self.enclosing {
             env.assign(name, value)
         } else {
-            Err(RuntimeError::new(
-                name.clone(),
-                &format!("Undefined variable {}", name.lexeme),
+            Err(RuntimeError::WithMsg(
+                RuntimeErrorCtx {
+                    token: name.clone(),
+                },
+                format!("Undefined variable {}", name.lexeme),
             ))
         }
     }
@@ -57,9 +60,11 @@ impl Environment {
                 if let Some(ref env) = self.enclosing {
                     env.get(name)
                 } else {
-                    Err(RuntimeError::new(
-                        name.clone(),
-                        &format!("Undefined variable '{}'", &name.lexeme),
+                    Err(RuntimeError::WithMsg(
+                        RuntimeErrorCtx {
+                            token: name.clone(),
+                        },
+                        format!("Undefined variable '{}'", &name.lexeme),
                     ))
                 }
             }

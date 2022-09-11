@@ -1,17 +1,22 @@
 use crate::{
     environment::Environment,
-    error::error_reporter::{RuntimeError, RuntimeErrorReporter, RuntimeResult},
+    error::{
+        error_reporter::ErrorReporter,
+        runtime_error::{RuntimeError, RuntimeErrorCtx},
+    },
     grammar::{Expr, Stmt},
     object::LoxObject,
     token::{Token, TokenType},
 };
+
+pub type RuntimeResult<T> = Result<T, RuntimeError>;
 
 /// The interpreter is responsible for "running" the program.
 pub struct Interpreter {
     /// Used for the programs memory (storing and retrieving variables, etc)
     environment: Environment,
 
-    pub error_reporter: RuntimeErrorReporter,
+    pub error_reporter: ErrorReporter,
 }
 
 impl Interpreter {
@@ -19,7 +24,7 @@ impl Interpreter {
     pub fn new() -> Self {
         Self {
             environment: Environment::new(None),
-            error_reporter: RuntimeErrorReporter::new(),
+            error_reporter: ErrorReporter::new(),
         }
     }
 
@@ -31,28 +36,45 @@ impl Interpreter {
 
     fn execute(&mut self, stmt: Stmt) {
         match stmt {
-            Stmt::Expression(expr) => match self.expression_statement(expr) {
-                Ok(_) => {}
-                Err(e) => {
-                    self.error_reporter.runtime_error(e);
+            Stmt::Expression(expr) => {
+                if let Err(e) = self.expression_statement(expr) {
+                    self.error_reporter.error(e);
                 }
-            },
-            Stmt::Print(expr) => match self.print_statement(expr) {
-                Ok(_) => {}
-                Err(e) => {
-                    self.error_reporter.runtime_error(e);
+            }
+            Stmt::Print(expr) => {
+                if let Err(e) = self.print_statement(expr) {
+                    self.error_reporter.error(e);
                 }
-            },
-            Stmt::VarDecl(name, maybe_expr) => match self.variable_statement(name, maybe_expr) {
-                Ok(_) => {}
-                Err(e) => {
-                    self.error_reporter.runtime_error(e);
+            }
+            Stmt::VarDecl(name, maybe_expr) => {
+                if let Err(e) = self.variable_statement(name, maybe_expr) {
+                    self.error_reporter.error(e);
                 }
-            },
+            }
             Stmt::Block(statements) => {
                 self.execute_block(statements, Environment::new(Some(self.environment.clone())));
             }
+            Stmt::If(condition, then_branch, else_branch) => {
+                if let Err(e) = self.if_statement(condition, *then_branch, else_branch.map(|s| *s))
+                {
+                    self.error_reporter.error(e);
+                }
+            }
         }
+    }
+
+    fn if_statement(
+        &mut self,
+        condition: Expr,
+        then_branch: Stmt,
+        else_branch: Option<Stmt>,
+    ) -> RuntimeResult<()> {
+        if self.evaluate(condition)?.is_truthy() {
+            self.execute(then_branch);
+        } else if let Some(stmt) = else_branch {
+            self.execute(stmt);
+        }
+        Ok(())
     }
 
     fn execute_block(&mut self, statements: Vec<Stmt>, environment: Environment) {
@@ -104,6 +126,36 @@ impl Interpreter {
                 self.environment.assign(name, value.clone())?;
                 Ok(value)
             }
+            Expr::Logical(lhs, operator, rhs) => {
+                self.evaluate_logical_expression(*lhs, operator, *rhs)
+            }
+            Expr::Call(callee, closing_paren, args) => {
+                self.evaluate_call_expr(*callee, closing_paren, args)
+            },
+        }
+    }
+
+    fn evaluate_call_expr(&mut self, callee: Expr, closing_paren: Token, args: Vec<Expr>) -> RuntimeResult<LoxObject> { 
+        let mut callee = self.evaluate(callee)?;
+
+        let args_evaluated = args.into_iter().map(|arg| self.evaluate(arg)).collect();
+    }
+
+    fn evaluate_logical_expression(
+        &mut self,
+        lhs: Expr,
+        operator: Token,
+        rhs: Expr,
+    ) -> RuntimeResult<LoxObject> {
+        let left = self.evaluate(lhs)?;
+        if (operator.token_type == TokenType::Or && left.is_truthy())
+            || !left.is_truthy()
+        {
+            // Short circuit
+            Ok(left)
+        } else {
+            // Doesn't short circuit, must evaluate rhs
+            self.evaluate(rhs)
         }
     }
 
@@ -125,8 +177,8 @@ impl Interpreter {
                     Ok(LoxObject::Number(-n))
                 } else {
                     Err(RuntimeError::new(
-                        operator,
-                        "unary minus can only be used with numbers",
+                        operator.clone(),
+                        "Unary '-' can only be applied to numbers.",
                     ))
                 }
             }
@@ -134,7 +186,7 @@ impl Interpreter {
                 // No other operators other than ! and - can be used in a unary way.
                 Err(RuntimeError::new(
                     operator.clone(),
-                    &format!("token '{}' cannot be used as unary", operator.lexeme),
+                    format!("token '{}' cannot be used as unary", operator.lexeme),
                 ))
             }
         }
@@ -246,7 +298,7 @@ impl Interpreter {
                 // Error out at the end of the match
                 Err(RuntimeError::new(
                     operator.clone(),
-                    &format!("Cannot use token {} for binary operation", operator.lexeme),
+                    format!("Cannot use token {} for binary operation", operator.lexeme),
                 ))
             }
         }
@@ -262,7 +314,7 @@ impl Interpreter {
             TokenType::Nil => Ok(LoxObject::Nil),
             _ => Err(RuntimeError::new(
                 token.clone(),
-                &format!("Tried to evaluate token '{}' as literal", token.lexeme),
+                format!("Tried to evaluate token '{}' as literal", token.lexeme),
             )),
         }
     }

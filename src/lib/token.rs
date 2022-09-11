@@ -76,7 +76,7 @@ impl std::fmt::Display for TokenType {
             TokenType::Number(n) => {
                 format!("{}", n)
             }
-            TokenType::And => "&&".to_owned(),
+            TokenType::And => "and".to_owned(),
             TokenType::Class => "class".to_owned(),
             TokenType::Else => "else".to_owned(),
             TokenType::False => "false".to_owned(),
@@ -84,7 +84,7 @@ impl std::fmt::Display for TokenType {
             TokenType::For => "for".to_owned(),
             TokenType::If => "if".to_owned(),
             TokenType::Nil => "nil".to_owned(),
-            TokenType::Or => "||".to_owned(),
+            TokenType::Or => "or".to_owned(),
             TokenType::Print => "print".to_owned(),
             TokenType::Return => "return".to_owned(),
             TokenType::Super => "super".to_owned(),

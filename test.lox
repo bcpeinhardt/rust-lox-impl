@@ -1,13 +1,17 @@
-// Global Scope (prints 2)
-var a = 2;
+// Global Scope (prints true)
+var a = 2 != 3;
 print a;
 
 {
     // Local Scope Shadowing (prints 1)
-    var a = 1;
+    var a = "hello" + " austin";
     print a;
 }
 
-// Goes back to global scope (prints 2)
-print a;
+// If statement
+if (a or false) {
+    print "a is true";
+} else {
+    // never reached
+}
 

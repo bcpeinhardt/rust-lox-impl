@@ -103,7 +103,7 @@ impl Lox {
             println!("Tokens: {:?}", tokens);
         }
 
-        // Parse the Tokens into a syntax tree
+        // Parse the Tokens into a list of statements.
         let parser = Parser::new(tokens, error_reporter);
         let (stmts, error_reporter) = parser.parse();
         if debug_mode {
@@ -115,7 +115,7 @@ impl Lox {
             std::process::exit(65);
         }
 
-        // Use the Tree Walk Interpreter to evaluate the expression
+        // Use the Tree Walk Interpreter to evaluate the statements.
         self.interpreter.interpret(stmts.clone());
 
         // Exit if there were Runtime errors

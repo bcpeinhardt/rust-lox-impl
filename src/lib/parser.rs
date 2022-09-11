@@ -72,13 +72,28 @@ impl Parser {
     }
 
     fn statement(&mut self) -> ParseResult<Stmt> {
-        if self.advance_on(TokenType::Print) {
+        if self.advance_on(TokenType::If) {
+            self.if_statement()
+        } else if self.advance_on(TokenType::Print) {
             self.print_statement()
         } else if self.advance_on(TokenType::LeftBrace) {
             Ok(Stmt::Block(self.block_statement()?))
         } else {
             self.expression_statement()
         }
+    }
+
+    fn if_statement(&mut self) -> ParseResult<Stmt> {
+        self.advance_on_or_err(TokenType::LeftParen)?;
+        let condition = self.expression()?;
+        self.advance_on_or_err(TokenType::RightParen)?;
+        let then_branch = Box::new(self.statement()?);
+        let else_branch = if self.advance_on(TokenType::Else) {
+            Some(Box::new(self.statement()?))
+        } else {
+            None
+        };
+        Ok(Stmt::If(condition, then_branch, else_branch))
     }
 
     fn block_statement(&mut self) -> ParseResult<Vec<Stmt>> {
@@ -115,7 +130,7 @@ impl Parser {
     ///             | equality
     fn assignment(&mut self) -> ParseResult<Expr> {
         // If we're looking as an assignment, this will trickle down to an Expr::Variable
-        let expr = self.equality()?;
+        let expr = self.or()?;
 
         if self.advance_on(TokenType::Equal) {
             let equals = self.previous_token();
@@ -129,6 +144,30 @@ impl Parser {
                 .error(ParseError::InvalidAssignmentTarget(ParseErrorCtx {
                     token: equals,
                 }))
+        }
+
+        Ok(expr)
+    }
+
+    fn or(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.and()?;
+
+        while self.advance_on(TokenType::Or) {
+            let operator = self.previous_token();
+            let right = self.and()?;
+            expr = Expr::Logical(Box::new(expr), operator, Box::new(right));
+        }
+
+        Ok(expr)
+    }
+
+    fn and(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.equality()?;
+
+        while self.advance_on(TokenType::And) {
+            let operator = self.previous_token();
+            let right = self.equality()?;
+            expr = Expr::Logical(Box::new(expr), operator, Box::new(right));
         }
 
         Ok(expr)
@@ -191,8 +230,39 @@ impl Parser {
             let right = self.unary()?;
             Ok(Expr::Unary(operator, Box::new(right)))
         } else {
-            Ok(self.primary()?)
+            Ok(self.call()?)
         }
+    }
+
+    fn call(&mut self) -> ParseResult<Expr> { 
+        let mut expr = self.primary()?;
+
+        loop {
+            if self.advance_on(TokenType::LeftParen) {
+                expr = self.finish_call(expr)?;
+            } else {
+                break;
+            }
+        }
+
+        Ok(expr)
+    }
+
+    fn finish_call(&mut self, callee: Expr) -> ParseResult<Expr> { 
+        let mut args = vec![];
+        if !self.current_token_is_a(TokenType::RightParen) { 
+            args.push(self.expression()?);
+            while self.advance_on(TokenType::Comma) { 
+                if args.len() >= 255 {
+
+                    // We report an error but we dont throw it because we dont need to synchronize.
+                    self.error_reporter.error(ParseError::TooManyFunctionArguments(ParseErrorCtx { token: self.current_token()})); 
+                }
+                args.push(self.expression()?);
+            }
+        }
+        let closing_paren = self.advance_on_or_err(TokenType::RightParen)?;
+        Ok(Expr::Call(Box::new(callee), closing_paren, args))
     }
 
     /// primary -> NUMBER | STRING | true | false | nil

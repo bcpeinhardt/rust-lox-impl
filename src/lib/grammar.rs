@@ -12,6 +12,11 @@ pub enum Expr {
 
     /// Takes the name of the variable (as a token) and the expression to evaluate and assign
     Assignment(Token, Box<Expr>),
+
+    Logical(Box<Expr>, Token, Box<Expr>),
+
+    /// Represent a function call (Callee, Closing Paren for Error Reporting, Arguments)
+    Call(Box<Expr>, Token, Vec<Expr>),
 }
 
 /// Similarly to the Expr enum, rather than using a macro to generate classes for each type
@@ -31,4 +36,9 @@ pub enum Stmt {
 
     /// Represents block scope { ... }
     Block(Vec<Stmt>),
+
+    /// An if statement has an expression to evaluate to determine whether or not to run,
+    /// a statement to run if the condition is true, and a statement to run if the condition
+    /// is false.
+    If(Expr, Box<Stmt>, Option<Box<Stmt>>),
 }
