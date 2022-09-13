@@ -9,7 +9,7 @@ use crate::{
 
 /// The environment is responsible for the memory of the program. Each instance of the interpreter gets
 /// it's own environment for storing variables etc.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Environment {
     /// Represents the global variables in the program
     variables: HashMap<String, LoxObject>,
@@ -20,9 +20,8 @@ pub struct Environment {
 
 impl Environment {
     /// Construct an empty Environment
-    pub fn new(enclosing_env: Option<Environment>) -> Self {
-        // Box up the enclosing environment
-        let enclosing = enclosing_env.map(|env| Box::new(env));
+    pub fn new(enclosing: Option<Environment>) -> Self {
+        let enclosing = enclosing.map(|e| Box::new(e));
 
         Self {
             variables: HashMap::new(),
@@ -33,6 +32,18 @@ impl Environment {
     /// Define a variable in the environment
     pub fn define(&mut self, name: &str, value: LoxObject) {
         let _ = self.variables.insert(name.to_owned(), value);
+    }
+
+    /// Define a variable in the top level scope of the environment
+    pub fn define_global(&mut self, name: &str, value: LoxObject) {
+
+        // If there is some enclosing scope, go up one layer, otherwise we 
+        // are global and can define the object here.
+        if let Some(ref mut env) = &mut self.enclosing {
+            env.define_global(name, value);
+        } else {
+            self.define(name, value);
+        }
     }
 
     /// Reassign the value of a variable in the environment

@@ -14,7 +14,7 @@ pub enum ParseError {
     ExpectedDifferentToken(ParseErrorCtx, TokenType),
 
     #[error("{0}: Cannot have more that 255 arguments for a function (Seriously chill)")]
-    TooManyFunctionArguments(ParseErrorCtx)
+    TooManyFunctionArguments(ParseErrorCtx),
 }
 
 #[derive(Debug)]

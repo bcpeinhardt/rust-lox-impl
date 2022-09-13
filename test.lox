@@ -1,17 +1,17 @@
-// Global Scope (prints true)
-var a = 2 != 3;
-print a;
-
-{
-    // Local Scope Shadowing (prints 1)
-    var a = "hello" + " austin";
-    print a;
+fun fib(n) {
+    if (n <= 1) return n;
+    return fib(n - 1) + fib(n - 2);
 }
 
-// If statement
-if (a or false) {
-    print "a is true";
-} else {
-    // never reached
+fun fibCounter() {
+    var i = 0;
+    fun count() {
+        i = i + 1;
+        print fib(i);
+    }
+    return count;
 }
 
+var counter = fibCounter();
+counter();
+counter();

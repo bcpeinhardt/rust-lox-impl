@@ -1,5 +1,7 @@
+pub mod callable;
 pub mod environment;
 pub mod error;
+pub mod function;
 pub mod grammar;
 pub mod interpreter;
 pub mod lox;

@@ -1,44 +1,108 @@
 use crate::token::Token;
 
-/// Represents the grammar for expressions in Lox. The parse construct these from a list of tokens,
-/// and the interpreter evaluates them.
-#[derive(Debug, Clone)]
+/// Represents the grammar for expressions in Lox.
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
-    Binary(Box<Expr>, Token, Box<Expr>),
-    Grouping(Box<Expr>),
-    Literal(Token),
-    Unary(Token, Box<Expr>),
-    Variable(Token),
-
-    /// Takes the name of the variable (as a token) and the expression to evaluate and assign
-    Assignment(Token, Box<Expr>),
-
-    Logical(Box<Expr>, Token, Box<Expr>),
-
-    /// Represent a function call (Callee, Closing Paren for Error Reporting, Arguments)
-    Call(Box<Expr>, Token, Vec<Expr>),
+    Binary(BinaryExpr),
+    Grouping(GroupingExpr),
+    Literal(LiteralExpr),
+    Unary(UnaryExpr),
+    Variable(VariableExpr),
+    Assignment(AssignmentExpr),
+    Logical(BinaryExpr),
+    Call(CallExpr),
 }
 
-/// Similarly to the Expr enum, rather than using a macro to generate classes for each type
-/// of statement, we will simply use an enum. Yay Rust.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+pub struct BinaryExpr {
+    pub lhs: Box<Expr>,
+    pub operator: Token,
+    pub rhs: Box<Expr>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnaryExpr {
+    pub operator: Token,
+    pub rhs: Box<Expr>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GroupingExpr {
+    /// The expression inside the enclosing parentheses.
+    pub expr: Box<Expr>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LiteralExpr {
+    pub token: Token,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VariableExpr {
+    pub name: Token,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AssignmentExpr {
+    pub variable: Token,
+    pub expr: Box<Expr>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CallExpr {
+    pub callee: Box<Expr>,
+    pub closing_paren: Token,
+    pub args: Vec<Expr>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
-    /// Contains the token for the name and the expression for the initializer
-    /// (None value indicates uninitialized variable)
-    VarDecl(Token, Option<Expr>),
+    VariableDeclaration(VariableDeclarationStmt),
+    Expression(ExpressionStmt),
+    Print(PrintStmt),
+    FunctionDeclaration(FunctionDeclarationStmt),
+    Block(BlockStmt),
+    If(IfStmt),
+    Return(ReturnStmt),
+}
 
-    /// An expression statement is simply an expression terminated with a semi colon
-    Expression(Expr),
+#[derive(Debug, Clone, PartialEq)]
+pub struct VariableDeclarationStmt {
+    pub name: Token,
+    pub initializer: Option<Expr>,
+}
 
-    /// In Lox, the "print" is a keyword so we have specific print statments. Like
-    /// an expression statement but with the keyword "print" in front.
-    Print(Expr),
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionDeclarationStmt {
+    pub name: Token,
+    pub params: Vec<Token>,
+    pub body: Vec<Stmt>,
+}
 
-    /// Represents block scope { ... }
-    Block(Vec<Stmt>),
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExpressionStmt {
+    pub expr: Expr,
+}
 
-    /// An if statement has an expression to evaluate to determine whether or not to run,
-    /// a statement to run if the condition is true, and a statement to run if the condition
-    /// is false.
-    If(Expr, Box<Stmt>, Option<Box<Stmt>>),
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrintStmt {
+    pub expr: Expr,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BlockStmt {
+    pub body: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct IfStmt {
+    pub condition: Expr,
+    pub then_branch: Box<Stmt>,
+    pub else_branch: Option<Box<Stmt>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReturnStmt {
+    pub return_keyword: Token,
+    pub value: Option<Expr>,
 }

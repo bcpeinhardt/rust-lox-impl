@@ -1,12 +1,18 @@
 use crate::{
-    environment::Environment,
+    callable::{Clock, LoxCallable},
+    environment::{Environment},
     error::{
         error_reporter::ErrorReporter,
-        runtime_error::{RuntimeError, RuntimeErrorCtx},
+        runtime_error::{RuntimeError},
     },
-    grammar::{Expr, Stmt},
+    function::LoxFunction,
+    grammar::{
+        AssignmentExpr, BinaryExpr, CallExpr, Expr, ExpressionStmt, FunctionDeclarationStmt,
+        GroupingExpr, LiteralExpr, PrintStmt, Stmt, UnaryExpr, VariableDeclarationStmt,
+        VariableExpr, BlockStmt, IfStmt, ReturnStmt,
+    },
     object::LoxObject,
-    token::{Token, TokenType},
+    token::{TokenType},
 };
 
 pub type RuntimeResult<T> = Result<T, RuntimeError>;
@@ -14,7 +20,7 @@ pub type RuntimeResult<T> = Result<T, RuntimeError>;
 /// The interpreter is responsible for "running" the program.
 pub struct Interpreter {
     /// Used for the programs memory (storing and retrieving variables, etc)
-    environment: Environment,
+    pub environment: Environment,
 
     pub error_reporter: ErrorReporter,
 }
@@ -22,8 +28,11 @@ pub struct Interpreter {
 impl Interpreter {
     /// Constructs a new interpreter for running a Lox program.
     pub fn new() -> Self {
+        let mut environment = Environment::new(None);
+        environment.define_global("clock", LoxObject::Clock(Clock {}));
+
         Self {
-            environment: Environment::new(None),
+            environment,
             error_reporter: ErrorReporter::new(),
         }
     }
@@ -34,74 +43,118 @@ impl Interpreter {
         }
     }
 
-    fn execute(&mut self, stmt: Stmt) {
+    fn execute(&mut self, stmt: Stmt) -> Option<LoxObject> {
         match stmt {
-            Stmt::Expression(expr) => {
-                if let Err(e) = self.expression_statement(expr) {
+            Stmt::Expression(expr_stmt) => {
+                if let Err(e) = self.expression_statement(expr_stmt) {
                     self.error_reporter.error(e);
                 }
             }
-            Stmt::Print(expr) => {
-                if let Err(e) = self.print_statement(expr) {
+            Stmt::Print(print_stmt) => {
+                if let Err(e) = self.print_statement(print_stmt) {
                     self.error_reporter.error(e);
                 }
             }
-            Stmt::VarDecl(name, maybe_expr) => {
-                if let Err(e) = self.variable_statement(name, maybe_expr) {
+            Stmt::VariableDeclaration(var_dec_stmt) => {
+                if let Err(e) = self.variable_statement(var_dec_stmt) {
                     self.error_reporter.error(e);
                 }
             }
-            Stmt::Block(statements) => {
-                self.execute_block(statements, Environment::new(Some(self.environment.clone())));
+            Stmt::Block(block_stmt) => {
+                self.execute_block(block_stmt, Environment::new(Some(self.environment.clone())));
             }
-            Stmt::If(condition, then_branch, else_branch) => {
-                if let Err(e) = self.if_statement(condition, *then_branch, else_branch.map(|s| *s))
-                {
-                    self.error_reporter.error(e);
+            Stmt::If(if_stmt) => {
+                match self.if_statement(if_stmt) {
+                    Ok(maybe_return_value) => {
+                        match maybe_return_value {
+                            Some(value) => {
+                                return Some(value);
+                            },
+                            None => {},
+                        }
+                    },
+                    Err(e) => {
+                        self.error_reporter.error(e);
+                    },
                 }
             }
+            Stmt::FunctionDeclaration(func_decl_stmt) => {
+                self.function_declaration_statement(func_decl_stmt);
+            }
+            Stmt::Return(ReturnStmt { value, ..}) => {
+                let return_value = if let Some(expr) = value {
+                    match self.evaluate(expr) {
+                        Ok(obj) => obj,
+                        Err(e) => {
+                            self.error_reporter.error(e);
+                            LoxObject::Nil
+                        },
+                    }
+                } else {
+                    LoxObject::Nil
+                };
+                return Some(return_value);
+            },
         }
+        None
+    }
+
+    fn function_declaration_statement(&mut self, func_decl_stmt: FunctionDeclarationStmt) {
+        let name = func_decl_stmt.name.clone();
+        let function = LoxFunction::from(func_decl_stmt, self.environment.clone());
+        self.environment
+            .define_global(&name.lexeme, LoxObject::Function(function));
     }
 
     fn if_statement(
         &mut self,
-        condition: Expr,
-        then_branch: Stmt,
-        else_branch: Option<Stmt>,
-    ) -> RuntimeResult<()> {
+        IfStmt { condition, then_branch, else_branch}: IfStmt
+    ) -> RuntimeResult<Option<LoxObject>> {
         if self.evaluate(condition)?.is_truthy() {
-            self.execute(then_branch);
+            Ok(self.execute(*then_branch))
         } else if let Some(stmt) = else_branch {
-            self.execute(stmt);
+            Ok(self.execute(*stmt))
+        } else {
+            Ok(None)
         }
-        Ok(())
     }
 
-    fn execute_block(&mut self, statements: Vec<Stmt>, environment: Environment) {
+    pub fn execute_block(&mut self, BlockStmt { body }: BlockStmt, environment: Environment) -> Option<LoxObject> {
         let previous = self.environment.clone();
-        self.execute_block_failable(statements, environment);
-        self.environment = previous;
+        let res = self.execute_block_failable(body, environment);
+        self.environment = previous.clone();
+        res
     }
 
-    fn execute_block_failable(&mut self, statements: Vec<Stmt>, environment: Environment) {
-        self.environment = environment.clone();
+    fn execute_block_failable(&mut self, statements: Vec<Stmt>, environment: Environment) -> Option<LoxObject> {
+        self.environment = environment;
         for stmt in statements.into_iter() {
-            self.execute(stmt);
+            let maybe_return = self.execute(stmt);
+            if maybe_return.is_some() {
+                return maybe_return;
+            }
         }
+        None
     }
 
-    fn expression_statement(&mut self, expr: Expr) -> RuntimeResult<()> {
+    fn expression_statement(
+        &mut self,
+        ExpressionStmt { expr }: ExpressionStmt,
+    ) -> RuntimeResult<()> {
         self.evaluate(expr)?;
         Ok(())
     }
 
-    fn print_statement(&mut self, expr: Expr) -> RuntimeResult<()> {
+    fn print_statement(&mut self, PrintStmt { expr }: PrintStmt) -> RuntimeResult<()> {
         let res = self.evaluate(expr)?;
         println!("{}", res);
         Ok(())
     }
 
-    fn variable_statement(&mut self, name: Token, initializer: Option<Expr>) -> RuntimeResult<()> {
+    fn variable_statement(
+        &mut self,
+        VariableDeclarationStmt { name, initializer }: VariableDeclarationStmt,
+    ) -> RuntimeResult<()> {
         let mut value = LoxObject::Nil;
         if let Some(expr) = initializer {
             value = self.evaluate(expr)?;
@@ -113,56 +166,93 @@ impl Interpreter {
     /// Top level function for evaluating an expression
     fn evaluate(&mut self, expr: Expr) -> RuntimeResult<LoxObject> {
         match expr {
-            Expr::Binary(lhs, operator, rhs) => self.evaluate_binary(*lhs, operator, *rhs),
-            Expr::Grouping(e) => {
-                // For a grouping just recursively evaluate the inner expression
-                self.evaluate(*e)
-            }
-            Expr::Literal(token) => self.evaluate_literal(token),
-            Expr::Unary(operator, e) => self.evaluate_unary(operator, *e),
-            Expr::Variable(token) => self.environment.get(token),
-            Expr::Assignment(name, expr) => {
-                let value = self.evaluate(*expr)?;
-                self.environment.assign(name, value.clone())?;
-                Ok(value)
-            }
-            Expr::Logical(lhs, operator, rhs) => {
-                self.evaluate_logical_expression(*lhs, operator, *rhs)
-            }
-            Expr::Call(callee, closing_paren, args) => {
-                self.evaluate_call_expr(*callee, closing_paren, args)
-            },
+            Expr::Binary(binary) => self.evaluate_binary(binary),
+
+            // For a grouping, just evaluate the inner expression.
+            Expr::Grouping(GroupingExpr { expr }) => self.evaluate(*expr),
+            Expr::Literal(literal) => self.evaluate_literal(literal),
+            Expr::Unary(unary) => self.evaluate_unary(unary),
+
+            // For a variable, just lookup the variable in the environment.
+            Expr::Variable(VariableExpr { name }) => self.environment.get(name),
+            Expr::Assignment(assignment) => self.evaluate_assignment(assignment),
+            Expr::Logical(binary) => self.evaluate_logical_expression(binary),
+            Expr::Call(call) => self.evaluate_call_expr(call),
         }
     }
 
-    fn evaluate_call_expr(&mut self, callee: Expr, closing_paren: Token, args: Vec<Expr>) -> RuntimeResult<LoxObject> { 
-        let mut callee = self.evaluate(callee)?;
+    fn evaluate_assignment(
+        &mut self,
+        AssignmentExpr { variable, expr }: AssignmentExpr,
+    ) -> RuntimeResult<LoxObject> {
+        let value = self.evaluate(*expr)?;
+        self.environment.assign(variable, value.clone())?;
+        Ok(value)
+    }
 
-        let args_evaluated = args.into_iter().map(|arg| self.evaluate(arg)).collect();
+    fn evaluate_call_expr(
+        &mut self,
+        CallExpr {
+            callee,
+            closing_paren,
+            args,
+        }: CallExpr,
+    ) -> RuntimeResult<LoxObject> {
+        let callee = self.evaluate(*callee)?;
+
+        let mut args_evaluated = vec![];
+        let len = args.len();
+        for arg in args.into_iter() {
+            args_evaluated.push(self.evaluate(arg)?);
+        }
+
+        if let LoxObject::Function(mut function) = callee {
+            if len != function.arity() {
+                Err(RuntimeError::new(
+                    closing_paren,
+                    format!("Expect {} arguments but got {}", function.arity(), len),
+                ))
+            } else {
+                Ok(function.call(self, args_evaluated))
+            }
+        } else if let LoxObject::Clock(mut function) = callee {
+            if len != function.arity() {
+                Err(RuntimeError::new(
+                    closing_paren,
+                    format!("Expect {} arguments but got {}", function.arity(), len),
+                ))
+            } else {
+                Ok(function.call(self, args_evaluated))
+            }
+        } else {
+            Err(RuntimeError::new(
+                closing_paren,
+                "Can only call functions and classes.",
+            ))
+        }
     }
 
     fn evaluate_logical_expression(
         &mut self,
-        lhs: Expr,
-        operator: Token,
-        rhs: Expr,
+        BinaryExpr { lhs, operator, rhs }: BinaryExpr,
     ) -> RuntimeResult<LoxObject> {
-        let left = self.evaluate(lhs)?;
-        if (operator.token_type == TokenType::Or && left.is_truthy())
-            || !left.is_truthy()
-        {
+        let left = self.evaluate(*lhs)?;
+        if (operator.token_type == TokenType::Or && left.is_truthy()) || !left.is_truthy() {
             // Short circuit
             Ok(left)
         } else {
             // Doesn't short circuit, must evaluate rhs
-            self.evaluate(rhs)
+            self.evaluate(*rhs)
         }
     }
 
     /// Converts a unary expression into a LoxObject
-    fn evaluate_unary(&mut self, operator: Token, expr: Expr) -> RuntimeResult<LoxObject> {
+    fn evaluate_unary(
+        &mut self,
+        UnaryExpr { operator, rhs }: UnaryExpr,
+    ) -> RuntimeResult<LoxObject> {
         // Evaluate the right hand side expression
-        let right = self.evaluate(expr)?;
+        let right = self.evaluate(*rhs)?;
 
         match operator.token_type {
             TokenType::Bang => {
@@ -195,13 +285,11 @@ impl Interpreter {
     /// Converts a binary expression into a LoxObject
     fn evaluate_binary(
         &mut self,
-        lhs: Expr,
-        operator: Token,
-        rhs: Expr,
+        BinaryExpr { lhs, operator, rhs }: BinaryExpr,
     ) -> RuntimeResult<LoxObject> {
-        // Evaluate tje left and right expressions.
-        let left = self.evaluate(lhs)?;
-        let right = self.evaluate(rhs)?;
+        // Evaluate the left and right expressions.
+        let left = self.evaluate(*lhs)?;
+        let right = self.evaluate(*rhs)?;
 
         match operator.token_type {
             TokenType::Minus => {
@@ -288,12 +376,8 @@ impl Interpreter {
                     ))
                 }
             }
-            TokenType::EqualEqual => {
-                return Ok(LoxObject::Boolean(left == right));
-            }
-            TokenType::BangEqual => {
-                return Ok(LoxObject::Boolean(left != right));
-            }
+            TokenType::EqualEqual => Ok(LoxObject::Boolean(left == right)),
+            TokenType::BangEqual => Ok(LoxObject::Boolean(left != right)),
             _ => {
                 // Error out at the end of the match
                 Err(RuntimeError::new(
@@ -305,7 +389,7 @@ impl Interpreter {
     }
 
     /// Transform an Expr::Literal's token into a LoxObject
-    fn evaluate_literal(&self, token: Token) -> RuntimeResult<LoxObject> {
+    fn evaluate_literal(&self, LiteralExpr { token }: LiteralExpr) -> RuntimeResult<LoxObject> {
         match token.token_type {
             TokenType::String(s) => Ok(LoxObject::String(s)),
             TokenType::Number(n) => Ok(LoxObject::Number(n)),
