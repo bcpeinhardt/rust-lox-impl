@@ -1,7 +1,7 @@
 use crate::{
     callable::LoxCallable,
     environment::Environment,
-    grammar::{FunctionDeclarationStmt, Stmt, BlockStmt},
+    grammar::{BlockStmt, FunctionDeclarationStmt, Stmt},
     interpreter::Interpreter,
     object::LoxObject,
     token::Token,
@@ -12,13 +12,21 @@ pub struct LoxFunction {
     name: Token,
     params: Vec<Token>,
     body: Vec<Stmt>,
-    closure: Environment
+    closure: Environment,
 }
 
 impl LoxFunction {
     /// Construct a function object from the function declaration statement parsed by the parser.
-    pub fn from(FunctionDeclarationStmt { name, params, body }: FunctionDeclarationStmt, closure: Environment) -> Self {
-        Self { name, params, body, closure }
+    pub fn from(
+        FunctionDeclarationStmt { name, params, body }: FunctionDeclarationStmt,
+        closure: Environment,
+    ) -> Self {
+        Self {
+            name,
+            params,
+            body,
+            closure,
+        }
     }
 }
 
@@ -28,15 +36,24 @@ impl LoxCallable for LoxFunction {
     }
 
     fn call(&mut self, interpreter: &mut Interpreter, args: Vec<LoxObject>) -> LoxObject {
-        // Define the passed arguments in the global environment
-        // for the function to execute in, then execute the body of the function
-        // in said environment.
-        let mut environment = Environment::new(Some(interpreter.environment.clone()));
+
+        let prev = interpreter.environment.clone();
+        interpreter.environment.append_child(&mut self.closure);
+        interpreter.environment.append_empty_child();
+
+        // Define each argument passed into the function in the nearest local scope.
         for (i, param) in self.params.iter().enumerate() {
-            environment.define(&param.lexeme, args[i].clone());
+            interpreter.environment.define(&param.lexeme, args[i].clone());
         }
-        let res = interpreter.execute_block(BlockStmt { body: self.body.clone() }, environment);
-        res.unwrap_or(LoxObject::Nil)
+
+        let mut return_val = LoxObject::Nil;
+        for stmt in self.body.clone().into_iter() {
+            if let Some(val) = interpreter.execute(stmt) {
+                return_val = val;
+            }
+        }
+        interpreter.environment = prev;
+        return_val
     }
 }
 

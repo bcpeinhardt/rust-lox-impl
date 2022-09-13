@@ -27,3 +27,17 @@ impl LoxCallable for Clock {
         )
     }
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrintEnv {}
+
+impl LoxCallable for PrintEnv {
+    fn arity(&self) -> usize {
+        0usize
+    }
+
+    fn call(&mut self, interpreter: &mut Interpreter, _: Vec<LoxObject>) -> LoxObject {
+        println!("{}", interpreter.environment);
+        LoxObject::Nil
+    }
+}

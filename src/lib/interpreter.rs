@@ -1,5 +1,5 @@
 use crate::{
-    callable::{Clock, LoxCallable},
+    callable::{Clock, LoxCallable, PrintEnv},
     environment::{Environment},
     error::{
         error_reporter::ErrorReporter,
@@ -28,8 +28,9 @@ pub struct Interpreter {
 impl Interpreter {
     /// Constructs a new interpreter for running a Lox program.
     pub fn new() -> Self {
-        let mut environment = Environment::new(None);
+        let mut environment = Environment::new();
         environment.define_global("clock", LoxObject::Clock(Clock {}));
+        environment.define_global("print_env", LoxObject::PrintEnv(PrintEnv {}));
 
         Self {
             environment,
@@ -43,7 +44,7 @@ impl Interpreter {
         }
     }
 
-    fn execute(&mut self, stmt: Stmt) -> Option<LoxObject> {
+    pub fn execute(&mut self, stmt: Stmt) -> Option<LoxObject> {
         match stmt {
             Stmt::Expression(expr_stmt) => {
                 if let Err(e) = self.expression_statement(expr_stmt) {
@@ -61,7 +62,7 @@ impl Interpreter {
                 }
             }
             Stmt::Block(block_stmt) => {
-                self.execute_block(block_stmt, Environment::new(Some(self.environment.clone())));
+                self.execute_block(block_stmt);
             }
             Stmt::If(if_stmt) => {
                 match self.if_statement(if_stmt) {
@@ -119,21 +120,21 @@ impl Interpreter {
         }
     }
 
-    pub fn execute_block(&mut self, BlockStmt { body }: BlockStmt, environment: Environment) -> Option<LoxObject> {
-        let previous = self.environment.clone();
-        let res = self.execute_block_failable(body, environment);
-        self.environment = previous.clone();
-        res
-    }
+    pub fn execute_block(&mut self, BlockStmt { body }: BlockStmt) -> Option<LoxObject> {
+        
+        let prev = self.environment.clone();
+        self.environment.append_empty_child();
 
-    fn execute_block_failable(&mut self, statements: Vec<Stmt>, environment: Environment) -> Option<LoxObject> {
-        self.environment = environment;
-        for stmt in statements.into_iter() {
+        for stmt in body.into_iter() {
+
             let maybe_return = self.execute(stmt);
+
             if maybe_return.is_some() {
+                self.environment = prev;
                 return maybe_return;
             }
         }
+        self.environment = prev;
         None
     }
 
@@ -224,7 +225,16 @@ impl Interpreter {
             } else {
                 Ok(function.call(self, args_evaluated))
             }
-        } else {
+        } else if let LoxObject::PrintEnv(mut function) = callee {
+            if len != function.arity() {
+                Err(RuntimeError::new(
+                    closing_paren,
+                    format!("Expect {} arguments but got {}", function.arity(), len),
+                ))
+            } else {
+                Ok(function.call(self, args_evaluated))
+            }
+        }else {
             Err(RuntimeError::new(
                 closing_paren,
                 "Can only call functions and classes.",
