@@ -62,7 +62,7 @@ impl Interpreter {
                 }
             }
             Stmt::Block(block_stmt) => {
-                self.execute_block(block_stmt);
+                return self.execute_block(block_stmt);
             }
             Stmt::If(if_stmt) => {
                 match self.if_statement(if_stmt) {
@@ -71,7 +71,8 @@ impl Interpreter {
                             Some(value) => {
                                 return Some(value);
                             },
-                            None => {},
+                            None => {
+                            },
                         }
                     },
                     Err(e) => {
@@ -85,7 +86,9 @@ impl Interpreter {
             Stmt::Return(ReturnStmt { value, ..}) => {
                 let return_value = if let Some(expr) = value {
                     match self.evaluate(expr) {
-                        Ok(obj) => obj,
+                        Ok(obj) => {
+                            obj
+                        },
                         Err(e) => {
                             self.error_reporter.error(e);
                             LoxObject::Nil
@@ -102,9 +105,9 @@ impl Interpreter {
 
     fn function_declaration_statement(&mut self, func_decl_stmt: FunctionDeclarationStmt) {
         let name = func_decl_stmt.name.clone();
-        let function = LoxFunction::from(func_decl_stmt, self.environment.clone());
+        let function = LoxFunction::from(func_decl_stmt);
         self.environment
-            .define_global(&name.lexeme, LoxObject::Function(function));
+            .define(&name.lexeme, LoxObject::Function(function));
     }
 
     fn if_statement(
@@ -112,7 +115,8 @@ impl Interpreter {
         IfStmt { condition, then_branch, else_branch}: IfStmt
     ) -> RuntimeResult<Option<LoxObject>> {
         if self.evaluate(condition)?.is_truthy() {
-            Ok(self.execute(*then_branch))
+            let val = self.execute(*then_branch);
+            Ok(val)
         } else if let Some(stmt) = else_branch {
             Ok(self.execute(*stmt))
         } else {
@@ -122,19 +126,15 @@ impl Interpreter {
 
     pub fn execute_block(&mut self, BlockStmt { body }: BlockStmt) -> Option<LoxObject> {
         
-        let prev = self.environment.clone();
-        self.environment.append_empty_child();
-
+        self.environment.append_empty_layer_to_local();
         for stmt in body.into_iter() {
-
             let maybe_return = self.execute(stmt);
-
             if maybe_return.is_some() {
-                self.environment = prev;
+                self.environment.pop_most_local();
                 return maybe_return;
             }
         }
-        self.environment = prev;
+        self.environment.pop_most_local();
         None
     }
 
