@@ -46,3 +46,13 @@ fun makeCounter(start) {
 var counter = makeCounter(11);
 print counter(); // 12
 print counter(); // 13
+
+var x = 14;
+while (x < 17) {
+    print x;
+    x = x + 1;
+}
+
+for (i = 17; i <= 20; i = i + 1) {
+    print i;
+}

@@ -60,10 +60,17 @@ pub enum Stmt {
     VariableDeclaration(VariableDeclarationStmt),
     Expression(ExpressionStmt),
     Print(PrintStmt),
+    While(WhileStmt),
     FunctionDeclaration(FunctionDeclarationStmt),
     Block(BlockStmt),
     If(IfStmt),
     Return(ReturnStmt),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WhileStmt { 
+    pub condition: Expr,
+    pub body: Box<Stmt>
 }
 
 #[derive(Debug, Clone, PartialEq)]

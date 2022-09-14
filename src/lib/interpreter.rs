@@ -9,7 +9,7 @@ use crate::{
     grammar::{
         AssignmentExpr, BinaryExpr, CallExpr, Expr, ExpressionStmt, FunctionDeclarationStmt,
         GroupingExpr, LiteralExpr, PrintStmt, Stmt, UnaryExpr, VariableDeclarationStmt,
-        VariableExpr, BlockStmt, IfStmt, ReturnStmt,
+        VariableExpr, BlockStmt, IfStmt, ReturnStmt, WhileStmt,
     },
     object::LoxObject,
     token::{TokenType},
@@ -98,6 +98,24 @@ impl Interpreter {
                     LoxObject::Nil
                 };
                 return Some(return_value);
+            },
+            Stmt::While(WhileStmt { condition, body}) => {
+                loop {
+                    match self.evaluate(condition.clone()) {
+                        Ok(obj) => {
+                            if obj.is_truthy() {
+                                if let Some(return_value) = self.execute(*body.clone()) {
+                                    return Some(return_value);
+                                }
+                            } else {
+                                break;
+                            }
+                        },
+                        Err(e) => {
+                            self.error_reporter.error(e);
+                        },
+                    }
+                }
             },
         }
         None

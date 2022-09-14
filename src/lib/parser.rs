@@ -6,7 +6,7 @@ use crate::{
     grammar::{
         AssignmentExpr, BinaryExpr, BlockStmt, CallExpr, Expr, ExpressionStmt,
         FunctionDeclarationStmt, GroupingExpr, IfStmt, LiteralExpr, PrintStmt, ReturnStmt, Stmt,
-        UnaryExpr, VariableDeclarationStmt, VariableExpr,
+        UnaryExpr, VariableDeclarationStmt, VariableExpr, WhileStmt,
     },
     token::{Token, TokenType},
 };
@@ -109,8 +109,12 @@ impl Parser {
     fn statement(&mut self) -> ParseResult<Stmt> {
         if self.advance_on(TokenType::If) {
             self.if_statement()
+        } else if self.advance_on(TokenType::For) { 
+            self.for_statement()
         } else if self.advance_on(TokenType::Print) {
             self.print_statement()
+        } else if self.advance_on(TokenType::While) {
+            self.while_statement()
         } else if self.advance_on(TokenType::Return) {
             self.return_statement()
         } else if self.advance_on(TokenType::LeftBrace) {
@@ -118,6 +122,77 @@ impl Parser {
         } else {
             self.expression_statement()
         }
+    }
+
+    fn for_statement(&mut self) -> ParseResult<Stmt> {
+        self.advance_on_or_err(TokenType::LeftParen)?;
+
+        // Parse the initializer
+        let initializer = if self.advance_on(TokenType::SemiColon) {
+            None
+        } else if self.advance_on(TokenType::Var) {
+            Some(self.var_declaration()?)
+        } else {
+            Some(self.expression_statement()?)
+        };
+
+        // Parse the condition
+        let mut condition = if !self.current_token_is_a(TokenType::SemiColon) { 
+            Some(self.expression()?)
+        } else {
+            None
+        };
+        self.advance_on_or_err(TokenType::SemiColon)?;
+
+        // Parse the increment
+        let increment = if !self.current_token_is_a(TokenType::RightParen) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+        self.advance_on_or_err(TokenType::RightParen)?;
+
+        // Parse the body of the loop
+        let mut body = self.statement()?;
+
+        // Add the inc as a final statement to execute in the desugared while loop
+        if let Some(inc) = increment { 
+            body = Stmt::Block(BlockStmt {
+                body: vec![body, Stmt::Expression(ExpressionStmt {
+                    expr: inc
+                })],
+            });
+        }
+
+        // If the condition is null, set it to a simple literal true value.
+        if condition.is_none() {
+            condition = Some(Expr::Literal(LiteralExpr {
+                token: Token::new(TokenType::True, "true".to_owned(), 0)
+            }))
+        }
+
+        // Make the body a while loop which executes itself based on the condition
+        body = Stmt::While(WhileStmt {
+            condition: condition.unwrap(), body: Box::new(body)
+        });
+
+        if let Some(init) = initializer {
+            body = Stmt::Block(BlockStmt {
+                body: vec![init, body]
+            });
+        }
+
+        Ok(body)
+    }
+
+    fn while_statement(&mut self) -> ParseResult<Stmt> {
+        self.advance_on_or_err(TokenType::LeftParen)?;
+        let condition = self.expression()?;
+        self.advance_on_or_err(TokenType::RightParen)?;
+        let body = self.statement()?;
+        Ok(Stmt::While(WhileStmt {
+            condition, body: Box::new(body)
+        }))
     }
 
     fn return_statement(&mut self) -> ParseResult<Stmt> {
