@@ -19,18 +19,8 @@ impl Environment {
     /// Construct an empty Environment
     pub fn new() -> Self {
         let global = HashMap::new();
-        let mut local = LinkedList::new();
-        local.push_back(HashMap::new());
+        let local = LinkedList::new();
         
-        Self {
-            local,
-            global
-        }
-    }
-
-    pub fn from_maps(local_scope: Scope, global: Scope) -> Self { 
-        let mut local = LinkedList::new();
-        local.push_back(local_scope);
         Self {
             local,
             global
@@ -63,7 +53,11 @@ impl Environment {
 
     /// Define a variable in the environment
     pub fn define(&mut self, name: &str, value: LoxObject) {
-        self.local.back_mut().map(|hm| hm.insert(name.to_owned(), value));
+        if self.local.is_empty() {
+            self.define_global(name, value)
+        } else {
+            self.local.back_mut().map(|hm| hm.insert(name.to_owned(), value));
+        }
     }
 
     /// Define a variable in the top level scope of the environment
