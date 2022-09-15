@@ -68,9 +68,9 @@ pub enum Stmt {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct WhileStmt { 
+pub struct WhileStmt {
     pub condition: Expr,
-    pub body: Box<Stmt>
+    pub body: Box<Stmt>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

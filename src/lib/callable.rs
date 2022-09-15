@@ -1,15 +1,17 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::{interpreter::Interpreter, object::LoxObject};
+use crate::{interpreter::Interpreter, object::LoxObject, environment::Environment};
 
+/// This trait is implemented on any Lox Structure that acts like a function
 pub trait LoxCallable {
     /// The number of parameters
     fn arity(&self) -> usize;
 
     /// Calls the thing and returns a Lox Object
-    fn call(&mut self, interpreter: &mut Interpreter, args: Vec<LoxObject>) -> LoxObject;
+    fn call(&mut self, interpreter: &mut Interpreter, env: &mut Environment, args: Vec<LoxObject>) -> LoxObject;
 }
 
+/// Built in function clock, used for benchmarking inside a lox script
 #[derive(Clone, PartialEq, Debug)]
 pub struct Clock {}
 
@@ -18,7 +20,7 @@ impl LoxCallable for Clock {
         0usize
     }
 
-    fn call(&mut self, _: &mut Interpreter, _: Vec<LoxObject>) -> LoxObject {
+    fn call(&mut self, _: &mut Interpreter, _: &mut Environment, _: Vec<LoxObject>) -> LoxObject {
         LoxObject::Number(
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -28,6 +30,8 @@ impl LoxCallable for Clock {
     }
 }
 
+/// Built in function print_env, for printing out the different memory scopes
+/// and variables at a given point in a lox script. Useful for debugging in a lox script.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PrintEnv {}
 
@@ -36,8 +40,8 @@ impl LoxCallable for PrintEnv {
         0usize
     }
 
-    fn call(&mut self, interpreter: &mut Interpreter, _: Vec<LoxObject>) -> LoxObject {
-        println!("{}", interpreter.environment);
+    fn call(&mut self, interpreter: &mut Interpreter, env: &mut Environment, _: Vec<LoxObject>) -> LoxObject {
+        println!("{}", env);
         LoxObject::Nil
     }
 }

@@ -1,3 +1,5 @@
+#![feature(result_option_inspect)]
+
 pub mod callable;
 pub mod environment;
 pub mod error;

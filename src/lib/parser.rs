@@ -109,7 +109,7 @@ impl Parser {
     fn statement(&mut self) -> ParseResult<Stmt> {
         if self.advance_on(TokenType::If) {
             self.if_statement()
-        } else if self.advance_on(TokenType::For) { 
+        } else if self.advance_on(TokenType::For) {
             self.for_statement()
         } else if self.advance_on(TokenType::Print) {
             self.print_statement()
@@ -137,7 +137,7 @@ impl Parser {
         };
 
         // Parse the condition
-        let mut condition = if !self.current_token_is_a(TokenType::SemiColon) { 
+        let mut condition = if !self.current_token_is_a(TokenType::SemiColon) {
             Some(self.expression()?)
         } else {
             None
@@ -156,29 +156,28 @@ impl Parser {
         let mut body = self.statement()?;
 
         // Add the inc as a final statement to execute in the desugared while loop
-        if let Some(inc) = increment { 
+        if let Some(inc) = increment {
             body = Stmt::Block(BlockStmt {
-                body: vec![body, Stmt::Expression(ExpressionStmt {
-                    expr: inc
-                })],
+                body: vec![body, Stmt::Expression(ExpressionStmt { expr: inc })],
             });
         }
 
         // If the condition is null, set it to a simple literal true value.
         if condition.is_none() {
             condition = Some(Expr::Literal(LiteralExpr {
-                token: Token::new(TokenType::True, "true".to_owned(), 0)
+                token: Token::new(TokenType::True, "true".to_owned(), 0),
             }))
         }
 
         // Make the body a while loop which executes itself based on the condition
         body = Stmt::While(WhileStmt {
-            condition: condition.unwrap(), body: Box::new(body)
+            condition: condition.unwrap(),
+            body: Box::new(body),
         });
 
         if let Some(init) = initializer {
             body = Stmt::Block(BlockStmt {
-                body: vec![init, body]
+                body: vec![init, body],
             });
         }
 
@@ -191,7 +190,8 @@ impl Parser {
         self.advance_on_or_err(TokenType::RightParen)?;
         let body = self.statement()?;
         Ok(Stmt::While(WhileStmt {
-            condition, body: Box::new(body)
+            condition,
+            body: Box::new(body),
         }))
     }
 

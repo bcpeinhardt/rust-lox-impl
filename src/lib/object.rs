@@ -1,4 +1,7 @@
-use crate::{callable::{Clock, PrintEnv}, function::LoxFunction};
+use crate::{
+    callable::{Clock, PrintEnv},
+    function::LoxFunction,
+};
 
 /// The job of this enum is essentially to map Lox Objects to Rust types. It is our replacement
 /// for the use of java.lang.Object in the Interpreter.
@@ -10,7 +13,7 @@ pub enum LoxObject {
     Nil,
     Function(LoxFunction),
     Clock(Clock),
-    PrintEnv(PrintEnv)
+    PrintEnv(PrintEnv),
 }
 
 impl std::fmt::Display for LoxObject {
@@ -32,11 +35,11 @@ impl std::fmt::Display for LoxObject {
                 write!(f, "{}", function)
             }
             LoxObject::Clock(_) => {
-                write!(f, "<clock fn>")
+                write!(f, "<builtin fn clock>")
             }
             LoxObject::PrintEnv(_) => {
-                write!(f, "<print_env fn>")
-            },
+                write!(f, "<builtin fn print_env>")
+            }
         }
     }
 }

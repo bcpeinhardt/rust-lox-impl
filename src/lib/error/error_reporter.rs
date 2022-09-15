@@ -1,5 +1,6 @@
 /// The error reporter is a very simple interface for reporting errors
 /// vie stdout and recording whether or not an error occurred.
+#[derive(Clone)]
 pub struct ErrorReporter {
     pub had_error: bool,
 }
