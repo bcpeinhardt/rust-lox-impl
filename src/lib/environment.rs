@@ -1,7 +1,7 @@
 use std::collections::{HashMap, LinkedList};
 
 use crate::{
-    callable::{Clock, PrintEnv},
+    builtin_functions::{Clock, PrintEnv},
     error::runtime_error::{RuntimeError, RuntimeErrorCtx},
     interpreter::RuntimeResult,
     object::LoxObject,
@@ -22,6 +22,17 @@ impl Scope {
     /// if the variable was previously defined.
     pub fn define(&mut self, name: &str, value: LoxObject) -> Option<LoxObject> {
         self.0.insert(name.to_owned(), value)
+    }
+
+    /// If a variable is already defined in the scope, reassigns
+    /// it and returns the old value. Returns `None` if the variable is not
+    /// yet defined.
+    pub fn assign(&mut self, name: &str, value: LoxObject) -> Option<LoxObject> {
+        if self.0.contains_key(name) {
+            self.0.insert(name.to_owned(), value)
+        } else {
+            None
+        }
     }
 
     /// Tries to retrieve a variable from the scope
@@ -118,8 +129,8 @@ impl MultiScope {
     pub fn assign(&mut self, name: &str, value: LoxObject) -> Option<LoxObject> {
         let mut old_value = None;
         for scope in self.iter_mut() {
-            if scope.0.contains_key(name) {
-                old_value = scope.define(name, value);
+            if let Some(obj) = scope.assign(name, value.clone()) {
+                old_value = Some(obj);
                 break;
             }
         }
@@ -158,9 +169,7 @@ impl Environment {
         let mut new_env = Self { local, global };
 
         // Define the builtin functions
-        new_env
-            .global
-            .define("clock", LoxObject::Clock(Clock {}));
+        new_env.global.define("clock", LoxObject::Clock(Clock {}));
         new_env
             .global
             .define("print_env", LoxObject::PrintEnv(PrintEnv {}));
@@ -218,55 +227,25 @@ impl Environment {
 
     /// Reassign the value of a variable in the environment
     pub fn assign(&mut self, name: Token, value: LoxObject) -> RuntimeResult<()> {
-        let mut successfully_assigned_varliable = false;
-
-        // Try to set the variable in the local scope
-        if let Some(ref mut local_scope) = self.local {
-            successfully_assigned_varliable =
-                local_scope.assign(&name.lexeme, value.clone()).is_some();
-        }
-
-        // If that didn't work, try setting it in the global scope
-        if !successfully_assigned_varliable {
-            successfully_assigned_varliable =
-                self.global.define(&name.lexeme, value).is_some();
-        }
-
-        // If that didn't work, the script is trying to assign to an undefined variable,
-        // so throw a Runtime Error. If it did work, give an Ok.
-        if !successfully_assigned_varliable {
-            Err(RuntimeError::WithMsg(
+        self.local
+            .as_mut()
+            .map(|local_scope| local_scope.assign(&name.lexeme, value.clone()))
+            .flatten()
+            .or(self.global.assign(&name.lexeme, value.clone()))
+            .ok_or(RuntimeError::WithMsg(
                 RuntimeErrorCtx {
                     token: name.clone(),
                 },
                 format!("Undefined variable {}", name.lexeme),
             ))
-        } else {
-            Ok(())
-        }
-    }
-
-    fn try_get_local(&self, name: Token) -> Option<LoxObject> {
-        let mut val = None;
-        if let Some(ref local_scope) = self.local {
-            for scope in local_scope.0.iter().rev() {
-                if scope.0.contains_key(&name.lexeme) {
-                    val = scope.0.get(&name.lexeme).map(|obj| obj.clone());
-                    break;
-                }
-            }
-        }
-        val
-    }
-
-    fn try_get_global(&self, name: Token) -> Option<LoxObject> {
-        self.global.0.get(&name.lexeme).map(|obj| obj.clone())
+            .map(|_| ())
     }
 
     /// Retrieve a variable from the environment
     pub fn get(&self, name: Token) -> RuntimeResult<LoxObject> {
-        self.local.as_ref()
-            .map(|ref local_scope| local_scope.get(&name.lexeme))
+        self.local
+            .as_ref()
+            .map(|local_scope| local_scope.get(&name.lexeme))
             .flatten()
             .or(self.global.get(&name.lexeme))
             .ok_or(RuntimeError::WithMsg(

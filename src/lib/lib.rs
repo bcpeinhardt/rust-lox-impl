@@ -1,3 +1,6 @@
+#![feature(is_some_with)]
+
+pub mod builtin_functions;
 pub mod callable;
 pub mod environment;
 pub mod error;

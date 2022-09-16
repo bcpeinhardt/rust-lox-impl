@@ -1,9 +1,9 @@
 var a = 2;
 {
     var a = 1;
-    print a;
+    print a; // 1
 }
-print a;
+print a; // 2
 
 fun fib(n) {
     if (n <= 1) {
@@ -12,14 +12,15 @@ fun fib(n) {
         return fib(n - 1) + fib(n - 2);
     }
 }
-print fib(4);
+print fib(4); // 3
 
 fun four() {
     if (true) {
         return 4;
     }
 }
-print four();
+print four(); // 4
+
 
 fun count(start, end) {
     if (end > start) count(start, end - 1);
@@ -32,7 +33,7 @@ fun update() {
     i = 11;
 }
 update();
-print i;
+print i; // 11
 
 fun makeCounter(start) {
     var i = start;

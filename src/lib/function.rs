@@ -9,10 +9,17 @@ use crate::{
     token::Token,
 };
 
+/// Represents a Lox Function Object
 #[derive(Debug, Clone, PartialEq)]
 pub struct LoxFunction {
+    /// The token of the function name from the function declaration
     name: Token,
+
+    /// The tokens from the function declaration describing the parameters
+    /// of the function.
     params: Vec<Token>,
+
+    /// The parsed list of statements from the body of the function declaration.
     body: Vec<Stmt>,
 }
 
@@ -24,17 +31,22 @@ impl LoxFunction {
 }
 
 impl LoxCallable for LoxFunction {
+    /// Returns the number of parameters the function expects
     fn arity(&self) -> usize {
         self.params.len()
     }
 
+    /// Calls the function
     fn call(
         &mut self,
         interpreter: &mut Interpreter,
         exec_env: &mut Environment,
         args: Vec<LoxObject>,
     ) -> LoxObject {
+        // In a new scope
         exec_env.in_new_local_scope(|e| {
+            // Define all the arguments of the function as local
+            // variables
             for (i, param) in self.params.iter().enumerate() {
                 e.define(&param.lexeme, args[i].clone());
             }
@@ -50,6 +62,7 @@ impl LoxCallable for LoxFunction {
                 }
             }
 
+            // Return the result of the function
             return_val
         })
     }

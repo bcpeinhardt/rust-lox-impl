@@ -1,5 +1,6 @@
 use crate::{
-    callable::{Clock, PrintEnv},
+    builtin_functions::{Clock, PrintEnv},
+    callable::LoxCallable,
     function::LoxFunction,
 };
 

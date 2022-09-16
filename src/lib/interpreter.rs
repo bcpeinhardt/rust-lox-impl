@@ -1,6 +1,6 @@
 use crate::{
-    callable::{Clock, LoxCallable, PrintEnv},
-    environment::{self, Environment, Scope},
+    callable::{LoxCallable},
+    environment::{Environment},
     error::{error_reporter::ErrorReporter, runtime_error::RuntimeError},
     function::LoxFunction,
     grammar::{
@@ -21,6 +21,7 @@ pub struct Interpreter {
 }
 
 impl Interpreter {
+
     /// Constructs a new interpreter for running a Lox program.
     pub fn new() -> Self {
         Self {
@@ -28,6 +29,7 @@ impl Interpreter {
         }
     }
 
+    /// Executes a list of Lox Statements in a dedicated environment.
     pub fn interpret(&mut self, stmts: Vec<Stmt>) {
         let mut environment = Environment::new();
         for stmt in stmts.into_iter() {
@@ -35,72 +37,73 @@ impl Interpreter {
         }
     }
 
+    /// Execute a single Lox statement in the given environemt. Returns an optional
+    /// return value for handling early returns (i.e. a return statement halfway through
+    /// a function body)
     pub fn execute(&mut self, stmt: Stmt, exec_env: &mut Environment) -> Option<LoxObject> {
         match stmt {
+            // An expression statement doesn't return anything, so just
+            // execute the stmt and report an error if there is one.
+            // Then return None.
             Stmt::Expression(expr_stmt) => {
-                if let Err(e) = self.expression_statement(expr_stmt, exec_env) {
-                    self.error_reporter.error(e);
-                }
+                self.expression_statement(expr_stmt, exec_env).map_err(|e| self.error_reporter.error(e));
+                None
             }
+            // A print statement doesn't return anything, so just
+            // execute the stmt and report an error if there is one.
+            // Then return None.
             Stmt::Print(print_stmt) => {
-                if let Err(e) = self.print_statement(print_stmt, exec_env) {
-                    self.error_reporter.error(e);
-                }
+                self.print_statement(print_stmt, exec_env).map_err(|e| self.error_reporter.error(e));
+                None
             }
+            // An variable declaration statement doesn't return anything, so just
+            // execute the stmt and report an error if there is one.
+            // Then return None.
             Stmt::VariableDeclaration(var_dec_stmt) => {
-                if let Err(e) = self.variable_statement(var_dec_stmt, exec_env) {
-                    self.error_reporter.error(e);
-                }
+                self.variable_statement(var_dec_stmt, exec_env).map_err(|e| self.error_reporter.error(e));
+                None
             }
+            // Executing a successfully parsed block stmt won't fail,
+            // (if the body fails to execute because of some error, it will
+            // be handled by another branch of this match stmt)
+            // so just bubble up the optional return value.
             Stmt::Block(block_stmt) => {
-                return self.execute_block(block_stmt, exec_env);
+                self.execute_block(block_stmt, exec_env)
             }
-            Stmt::If(if_stmt) => match self.if_statement(if_stmt, exec_env) {
-                Ok(maybe_return_value) => match maybe_return_value {
-                    Some(value) => {
-                        return Some(value);
-                    }
-                    None => {}
-                },
-                Err(e) => {
-                    self.error_reporter.error(e);
-                }
-            },
+            // An if stmt can fail (because it has to evaluate the condition) 
+            // and can have a return value, so if there's an
+            // error report it and return `None`, or if no error bubble up the 
+            // optional return value.
+            Stmt::If(if_stmt) => self.if_statement(if_stmt, exec_env).map_err(|e| self.error_reporter.error(e)).ok().flatten()
+            ,
+            // Interpreting a function declaration statement doesn't return anything
+            // and can't fail, so just
+            // execute the stmt and return None.
             Stmt::FunctionDeclaration(func_decl_stmt) => {
                 self.function_declaration_statement(func_decl_stmt, exec_env);
+                None
             }
-            Stmt::Return(ReturnStmt { value, .. }) => {
-                let return_value = if let Some(expr) = value {
-                    match self.evaluate(expr, exec_env) {
-                        Ok(obj) => obj,
-                        Err(e) => {
-                            self.error_reporter.error(e);
-                            LoxObject::Nil
-                        }
-                    }
-                } else {
-                    LoxObject::Nil
-                };
-                return Some(return_value);
+            Stmt::Return(return_stmt) => {
+                self.return_statement(return_stmt, exec_env).map_err(|e| self.error_reporter.error(e)).ok().flatten()
             }
-            Stmt::While(WhileStmt { condition, body }) => loop {
-                match self.evaluate(condition.clone(), exec_env) {
-                    Ok(obj) => {
-                        if obj.is_truthy() {
-                            if let Some(return_value) = self.execute(*body.clone(), exec_env) {
-                                return Some(return_value);
-                            }
-                        } else {
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        self.error_reporter.error(e);
-                    }
-                }
-            },
+            Stmt::While(while_stmt) => self.while_statement(while_stmt, exec_env).map_err(|e| self.error_reporter.error(e)).ok().flatten(),
         }
-        None
+    }
+
+    fn while_statement(&mut self, WhileStmt { condition, body }: WhileStmt, exec_env: &mut Environment) -> RuntimeResult<Option<LoxObject>> {
+
+        let mut res = None;
+        while self.evaluate(condition.clone(), exec_env)?.is_truthy() {
+            res = self.execute(*body.clone(), exec_env);
+            if res.is_some() {
+                return Ok(res);
+            }
+        }
+        Ok(None)
+    }
+
+    fn return_statement(&mut self, ReturnStmt { value, .. }: ReturnStmt, exec_env: &mut Environment) -> RuntimeResult<Option<LoxObject>> {
+        value.map(|expr| self.evaluate(expr, exec_env)).transpose()
     }
 
     fn function_declaration_statement(
