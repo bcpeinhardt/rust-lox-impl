@@ -20,12 +20,12 @@ impl Scope {
 
     /// Sets the value for a variable in the given scope. Optionally returns the old obj
     /// if the variable was previously defined.
-    pub fn set_variable(&mut self, name: &str, value: LoxObject) -> Option<LoxObject> {
+    pub fn define(&mut self, name: &str, value: LoxObject) -> Option<LoxObject> {
         self.0.insert(name.to_owned(), value)
     }
 
     /// Tries to retrieve a variable from the scope
-    pub fn get_variable(&self, name: &str) -> Option<LoxObject> {
+    pub fn get(&self, name: &str) -> Option<LoxObject> {
         self.0.get(name).map(|obj| obj.clone())
     }
 }
@@ -109,11 +109,7 @@ impl MultiScope {
 
     /// Defines a variable in the innermost scope.
     pub fn define(&mut self, name: &str, value: LoxObject) {
-        if self.innermost_mut().set_variable(name, value).is_some() {
-            // We panic here because this is our error, not behavior that should be possible to
-            // create in the Lox code.
-            panic!("Called define on a variable which has already been defined.");
-        }
+        self.innermost_mut().define(name, value);
     }
 
     /// Tries to assign Lox Object to the variable in the closest scope. Returns
@@ -123,7 +119,7 @@ impl MultiScope {
         let mut old_value = None;
         for scope in self.iter_mut() {
             if scope.0.contains_key(name) {
-                old_value = scope.set_variable(name, value);
+                old_value = scope.define(name, value);
                 break;
             }
         }
@@ -134,7 +130,7 @@ impl MultiScope {
     /// None if the variable is not defined in any scope.
     pub fn get(&self, name: &str) -> Option<LoxObject> {
         for scope in self.iter() {
-            if let Some(obj) = scope.get_variable(name) {
+            if let Some(obj) = scope.get(name) {
                 return Some(obj);
             }
         }
@@ -164,10 +160,10 @@ impl Environment {
         // Define the builtin functions
         new_env
             .global
-            .set_variable("clock", LoxObject::Clock(Clock {}));
+            .define("clock", LoxObject::Clock(Clock {}));
         new_env
             .global
-            .set_variable("print_env", LoxObject::PrintEnv(PrintEnv {}));
+            .define("print_env", LoxObject::PrintEnv(PrintEnv {}));
 
         new_env
     }
@@ -216,7 +212,7 @@ impl Environment {
         if let Some(ref mut local_scope) = self.local {
             local_scope.define(name, value.clone());
         } else {
-            self.global.set_variable(name, value);
+            self.global.define(name, value);
         }
     }
 
@@ -233,7 +229,7 @@ impl Environment {
         // If that didn't work, try setting it in the global scope
         if !successfully_assigned_varliable {
             successfully_assigned_varliable =
-                self.global.set_variable(&name.lexeme, value).is_some();
+                self.global.define(&name.lexeme, value).is_some();
         }
 
         // If that didn't work, the script is trying to assign to an undefined variable,
@@ -272,7 +268,7 @@ impl Environment {
         self.local.as_ref()
             .map(|ref local_scope| local_scope.get(&name.lexeme))
             .flatten()
-            .or(self.global.get_variable(&name.lexeme))
+            .or(self.global.get(&name.lexeme))
             .ok_or(RuntimeError::WithMsg(
                 RuntimeErrorCtx {
                     token: name.clone(),
