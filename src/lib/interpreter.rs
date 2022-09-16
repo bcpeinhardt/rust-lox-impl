@@ -1,6 +1,6 @@
 use crate::{
     callable::{Clock, LoxCallable, PrintEnv},
-    environment::{Environment, Scope, self},
+    environment::{self, Environment, Scope},
     error::{error_reporter::ErrorReporter, runtime_error::RuntimeError},
     function::LoxFunction,
     grammar::{
@@ -23,7 +23,6 @@ pub struct Interpreter {
 impl Interpreter {
     /// Constructs a new interpreter for running a Lox program.
     pub fn new() -> Self {
-
         Self {
             error_reporter: ErrorReporter::new(),
         }
@@ -104,11 +103,14 @@ impl Interpreter {
         None
     }
 
-    fn function_declaration_statement(&mut self, func_decl_stmt: FunctionDeclarationStmt, exec_env: &mut Environment) {
+    fn function_declaration_statement(
+        &mut self,
+        func_decl_stmt: FunctionDeclarationStmt,
+        exec_env: &mut Environment,
+    ) {
         let name = func_decl_stmt.name.clone();
         let function = LoxFunction::from(func_decl_stmt);
-        exec_env
-            .define(&name.lexeme, LoxObject::Function(function));
+        exec_env.define(&name.lexeme, LoxObject::Function(function));
     }
 
     fn if_statement(
@@ -117,7 +119,8 @@ impl Interpreter {
             condition,
             then_branch,
             else_branch,
-        }: IfStmt, exec_env: &mut Environment
+        }: IfStmt,
+        exec_env: &mut Environment,
     ) -> RuntimeResult<Option<LoxObject>> {
         if self.evaluate(condition, exec_env)?.is_truthy() {
             let val = self.execute(*then_branch, exec_env);
@@ -129,7 +132,11 @@ impl Interpreter {
         }
     }
 
-    pub fn execute_block(&mut self, BlockStmt { body }: BlockStmt, exec_env: &mut Environment) -> Option<LoxObject> {
+    pub fn execute_block(
+        &mut self,
+        BlockStmt { body }: BlockStmt,
+        exec_env: &mut Environment,
+    ) -> Option<LoxObject> {
         let mut cloned_interpreter = self.clone();
         exec_env.in_new_local_scope(|e| {
             for stmt in body.into_iter() {
@@ -144,13 +151,18 @@ impl Interpreter {
 
     fn expression_statement(
         &mut self,
-        ExpressionStmt { expr }: ExpressionStmt, exec_env: &mut Environment
+        ExpressionStmt { expr }: ExpressionStmt,
+        exec_env: &mut Environment,
     ) -> RuntimeResult<()> {
         self.evaluate(expr, exec_env)?;
         Ok(())
     }
 
-    fn print_statement(&mut self, PrintStmt { expr }: PrintStmt, exec_env: &mut Environment) -> RuntimeResult<()> {
+    fn print_statement(
+        &mut self,
+        PrintStmt { expr }: PrintStmt,
+        exec_env: &mut Environment,
+    ) -> RuntimeResult<()> {
         let res = self.evaluate(expr, exec_env)?;
         println!("{}", res);
         Ok(())
@@ -158,7 +170,8 @@ impl Interpreter {
 
     fn variable_statement(
         &mut self,
-        VariableDeclarationStmt { name, initializer }: VariableDeclarationStmt, exec_env: &mut Environment
+        VariableDeclarationStmt { name, initializer }: VariableDeclarationStmt,
+        exec_env: &mut Environment,
     ) -> RuntimeResult<()> {
         let mut value = LoxObject::Nil;
         if let Some(expr) = initializer {
@@ -188,7 +201,8 @@ impl Interpreter {
 
     fn evaluate_assignment(
         &mut self,
-        AssignmentExpr { variable, expr }: AssignmentExpr, exec_env: &mut Environment
+        AssignmentExpr { variable, expr }: AssignmentExpr,
+        exec_env: &mut Environment,
     ) -> RuntimeResult<LoxObject> {
         let value = self.evaluate(*expr, exec_env)?;
         exec_env.assign(variable, value.clone())?;
@@ -201,7 +215,8 @@ impl Interpreter {
             callee,
             closing_paren,
             args,
-        }: CallExpr, exec_env: &mut Environment
+        }: CallExpr,
+        exec_env: &mut Environment,
     ) -> RuntimeResult<LoxObject> {
         let callee = self.evaluate(*callee, exec_env)?;
 
@@ -248,7 +263,8 @@ impl Interpreter {
 
     fn evaluate_logical_expression(
         &mut self,
-        BinaryExpr { lhs, operator, rhs }: BinaryExpr, exec_env: &mut Environment
+        BinaryExpr { lhs, operator, rhs }: BinaryExpr,
+        exec_env: &mut Environment,
     ) -> RuntimeResult<LoxObject> {
         let left = self.evaluate(*lhs, exec_env)?;
         if (operator.token_type == TokenType::Or && left.is_truthy()) || !left.is_truthy() {
@@ -263,7 +279,8 @@ impl Interpreter {
     /// Converts a unary expression into a LoxObject
     fn evaluate_unary(
         &mut self,
-        UnaryExpr { operator, rhs }: UnaryExpr, exec_env: &mut Environment
+        UnaryExpr { operator, rhs }: UnaryExpr,
+        exec_env: &mut Environment,
     ) -> RuntimeResult<LoxObject> {
         // Evaluate the right hand side expression
         let right = self.evaluate(*rhs, exec_env)?;
@@ -299,7 +316,8 @@ impl Interpreter {
     /// Converts a binary expression into a LoxObject
     fn evaluate_binary(
         &mut self,
-        BinaryExpr { lhs, operator, rhs }: BinaryExpr, exec_env: &mut Environment
+        BinaryExpr { lhs, operator, rhs }: BinaryExpr,
+        exec_env: &mut Environment,
     ) -> RuntimeResult<LoxObject> {
         // Evaluate the left and right expressions.
         let left = self.evaluate(*lhs, exec_env)?;

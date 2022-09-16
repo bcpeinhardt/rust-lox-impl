@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::{interpreter::Interpreter, object::LoxObject, environment::Environment};
+use crate::{environment::Environment, interpreter::Interpreter, object::LoxObject};
 
 /// This trait is implemented on any Lox Structure that acts like a function
 pub trait LoxCallable {
@@ -8,7 +8,12 @@ pub trait LoxCallable {
     fn arity(&self) -> usize;
 
     /// Calls the thing and returns a Lox Object
-    fn call(&mut self, interpreter: &mut Interpreter, env: &mut Environment, args: Vec<LoxObject>) -> LoxObject;
+    fn call(
+        &mut self,
+        interpreter: &mut Interpreter,
+        env: &mut Environment,
+        args: Vec<LoxObject>,
+    ) -> LoxObject;
 }
 
 /// Built in function clock, used for benchmarking inside a lox script
@@ -40,7 +45,12 @@ impl LoxCallable for PrintEnv {
         0usize
     }
 
-    fn call(&mut self, interpreter: &mut Interpreter, env: &mut Environment, _: Vec<LoxObject>) -> LoxObject {
+    fn call(
+        &mut self,
+        interpreter: &mut Interpreter,
+        env: &mut Environment,
+        _: Vec<LoxObject>,
+    ) -> LoxObject {
         println!("{}", env);
         LoxObject::Nil
     }

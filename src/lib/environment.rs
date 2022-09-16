@@ -1,10 +1,11 @@
 use std::collections::{HashMap, LinkedList};
 
 use crate::{
+    callable::{Clock, PrintEnv},
     error::runtime_error::{RuntimeError, RuntimeErrorCtx},
     interpreter::RuntimeResult,
     object::LoxObject,
-    token::Token, callable::{Clock, PrintEnv},
+    token::Token,
 };
 
 /// Represents a single scope of LoxObjects
@@ -12,13 +13,20 @@ use crate::{
 pub struct Scope(HashMap<String, LoxObject>);
 
 impl Scope {
-
+    /// Creates a new Scope
     pub fn new() -> Self {
         Scope(HashMap::new())
     }
 
-    pub fn define(&mut self, name: &str, value: LoxObject) {
-        self.0.insert(name.to_owned(), value);
+    /// Sets the value for a variable in the given scope. Optionally returns the old obj
+    /// if the variable was previously defined.
+    pub fn set_variable(&mut self, name: &str, value: LoxObject) -> Option<LoxObject> {
+        self.0.insert(name.to_owned(), value)
+    }
+
+    /// Tries to retrieve a variable from the scope
+    pub fn get_variable(&self, name: &str) -> Option<LoxObject> {
+        self.0.get(name).map(|obj| obj.clone())
     }
 }
 
@@ -27,7 +35,6 @@ impl Scope {
 pub struct MultiScope(LinkedList<Scope>);
 
 impl MultiScope {
-
     /// Creates a new multi scope with one layer.
     pub fn new() -> Self {
         let mut list = LinkedList::new();
@@ -35,26 +42,64 @@ impl MultiScope {
         Self(list)
     }
 
-    /// Removes and returns the innermost scope layer. Errors
-    /// if trying to pop the only scope
-    pub fn pop_innermost_scope(&mut self) -> Result<Scope, ()> {
+    /// Bubbling up iterator methods. Iterates from inside out (local scope to outer scope)
+    fn iter(&self) -> impl Iterator<Item = &Scope> {
+        self.0.iter().rev()
+    }
+
+    /// Bubbling up iterator methods. Iterates from inside out (local scope to outer scope)
+    fn iter_mut(&mut self) -> impl Iterator<Item = &mut Scope> {
+        self.0.iter_mut().rev()
+    }
+
+    /// Bubbling up iterator methods. Iterates from inside out (local scope to outer scope)
+    fn into_iter(self) -> impl Iterator<Item = Scope> {
+        self.0.into_iter().rev()
+    }
+
+    /// Get a mutable reference to the innermost (most local) scope
+    fn innermost_mut(&mut self) -> &mut Scope {
+        // Unwrap is safe because inner list never has 0 elements
+        self.iter_mut().next().unwrap()
+    }
+
+    /// Removes and returns the innermost scope layer.
+    /// Important! If there is only one layer, will return None rather
+    /// than popping. This is because of the sematic choice to
+    /// consider an empty MultiScope an invalid state, and to
+    /// represent the "local" member of an `Environment` as an
+    /// `Option<MultiScope>` where MultiScope always has at least one scope
+    /// to operate in. In this way, we escalate the information
+    /// about whether or not we are operating in the local or global scope
+    /// to the environment struct, rather than having to implement
+    /// a ton of failable methods on multiscope.
+    pub fn pop_innermost_scope(&mut self) -> Option<Scope> {
         if self.0.len() == 1 {
-            Err(())
+            None
         } else {
-            // We know this unwrap is safe because the len is at least 2
-            Ok(self.0.pop_back().unwrap())
+            self.0.pop_back()
         }
     }
 
-    /// Returns a copy of the innermost scope layer.
-    pub fn clone_innermost_scope(&self) -> Scope {
-
-        // We know this unwrap is safe because this structure
-        // will always contain at least one Scope.
-        self.0
-            .back()
-            .unwrap()
-            .clone()
+    /// For retrieving the final layer of a MultiScope.
+    /// Takes self because an empty MultiScope is an invalid state.
+    /// Use with `pop_innermost_scope` to ensure there is only one layer to pop.
+    /// # Example
+    /// ```
+    ///  use rust_lox_impl::environment::{MultiScope, Scope};
+    ///
+    /// let mut multi_scope = MultiScope::new();
+    /// multi_scope.push_as_innermost_scope(Scope::new());
+    ///
+    /// let end_scope = if let Some(scope) = multi_scope.pop_innermost_scope() {
+    ///     scope
+    /// } else {
+    ///     multi_scope.consume_final_layer()
+    /// };
+    /// ```
+    pub fn consume_final_layer(mut self) -> Scope {
+        // We know this unwrap is safe because always has at least one scope.
+        self.0.pop_front().unwrap()
     }
 
     /// Add a scope layer to the environment
@@ -62,25 +107,54 @@ impl MultiScope {
         self.0.push_back(scope);
     }
 
-    /// Defines a variable in the innermost scope. 
+    /// Defines a variable in the innermost scope.
     pub fn define(&mut self, name: &str, value: LoxObject) {
+        if self.innermost_mut().set_variable(name, value).is_some() {
+            // We panic here because this is our error, not behavior that should be possible to
+            // create in the Lox code.
+            panic!("Called define on a variable which has already been defined.");
+        }
+    }
 
-        // We know this unwrap is safe because this struct will always contain
-        // at least one inner scope.
-        self.0.back_mut().unwrap().define(name, value);
+    /// Tries to assign Lox Object to the variable in the closest scope. Returns
+    /// the Some(old_obj) if successful or None if the variables isn't defined in any
+    /// of the scopes.
+    pub fn assign(&mut self, name: &str, value: LoxObject) -> Option<LoxObject> {
+        let mut old_value = None;
+        for scope in self.iter_mut() {
+            if scope.0.contains_key(name) {
+                old_value = scope.set_variable(name, value);
+                break;
+            }
+        }
+        old_value
+    }
+
+    /// Tries to get a variable from the closest scope it can. Returns
+    /// None if the variable is not defined in any scope.
+    pub fn get(&self, name: &str) -> Option<LoxObject> {
+        for scope in self.iter() {
+            if let Some(obj) = scope.get_variable(name) {
+                return Some(obj);
+            }
+        }
+        None
     }
 }
 
 /// Represents a program execution environment.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Environment {
-    pub local: Option<MultiScope>,
-    pub global: Scope,
+    /// Represents any local scopes created during the execution of the program
+    local: Option<MultiScope>,
+
+    /// Represents the global scope of the program
+    global: Scope,
 }
 
 impl Environment {
-
-    /// Construct an empty Environment
+    /// Construct an new Environment. Contains only a global scope
+    /// with builtin Lox functions defined.
     pub fn new() -> Self {
         let global = Scope::new();
         let local = None;
@@ -90,15 +164,17 @@ impl Environment {
         // Define the builtin functions
         new_env
             .global
-            .define("clock", LoxObject::Clock(Clock {}));
+            .set_variable("clock", LoxObject::Clock(Clock {}));
         new_env
             .global
-            .define("print_env", LoxObject::PrintEnv(PrintEnv {}));
+            .set_variable("print_env", LoxObject::PrintEnv(PrintEnv {}));
 
         new_env
     }
 
-    pub fn add_scope_layer(&mut self) {
+    /// Adds a layer to the local scope or creates a local scope if one
+    /// does not exist yet
+    fn add_scope_layer(&mut self) {
         if let Some(ref mut local_scope) = self.local {
             local_scope.push_as_innermost_scope(Scope::new());
         } else {
@@ -106,25 +182,31 @@ impl Environment {
         }
     }
 
-    pub fn remove_scope_layer(&mut self) -> Result<(), ()> {
+    /// Removes a layer from the local scope.
+    fn pop_scope_layer(&mut self) -> Option<Scope> {
         if let Some(ref mut local_scope) = self.local {
-            match local_scope.pop_innermost_scope() {
-                Ok(_) => {},
-                Err(_) => {
-                    self.local = None;
-                },
+            if let Some(scope) = local_scope.pop_innermost_scope() {
+                // There is a local scope with an extra layer to pop
+                Some(scope)
+            } else {
+                // The local scope only has one layer, so we set it to None
+                let res = Some(local_scope.clone().consume_final_layer());
+                self.local = None;
+                res
             }
-            Ok(())
         } else {
-            Err(())
+            // There is no local scope, so we return None;
+            None
         }
     }
 
+    /// Perform some operation inside an extra scope layer. Used for block stmts,
+    /// functions, etc.
     pub fn in_new_local_scope<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
         self.add_scope_layer();
         let res = f(self);
         // This unwrap is safe because we just added a scope layer.
-        self.remove_scope_layer().unwrap();
+        self.pop_scope_layer();
         res
     }
 
@@ -134,47 +216,37 @@ impl Environment {
         if let Some(ref mut local_scope) = self.local {
             local_scope.define(name, value.clone());
         } else {
-            self.global.define(name, value);
-        }
-    }
-
-    fn try_assign_local(&mut self, name: Token, value: LoxObject) -> bool {
-        let mut found_var = false;
-        if let Some(ref mut local_scope) = self.local {
-            for scope in local_scope.0.iter_mut().rev() {
-                if scope.0.contains_key(&name.lexeme) {
-                    scope.0.insert(name.lexeme.clone(), value);
-                    found_var = true;
-                    break;
-                }
-            }
-        }
-        found_var
-    }
-
-    fn try_assign_global(&mut self, name: Token, value: LoxObject) -> bool {
-        if self.global.0.contains_key(&name.lexeme) {
-            self.global.0.insert(name.lexeme.clone(), value);
-            true
-        } else {
-            false
+            self.global.set_variable(name, value);
         }
     }
 
     /// Reassign the value of a variable in the environment
     pub fn assign(&mut self, name: Token, value: LoxObject) -> RuntimeResult<()> {
-        // Search for the variable in local. Then search global. Then error.
-        if self.try_assign_local(name.clone(), value.clone())
-            || self.try_assign_global(name.clone(), value.clone())
-        {
-            Ok(())
-        } else {
+        let mut successfully_assigned_varliable = false;
+
+        // Try to set the variable in the local scope
+        if let Some(ref mut local_scope) = self.local {
+            successfully_assigned_varliable =
+                local_scope.assign(&name.lexeme, value.clone()).is_some();
+        }
+
+        // If that didn't work, try setting it in the global scope
+        if !successfully_assigned_varliable {
+            successfully_assigned_varliable =
+                self.global.set_variable(&name.lexeme, value).is_some();
+        }
+
+        // If that didn't work, the script is trying to assign to an undefined variable,
+        // so throw a Runtime Error. If it did work, give an Ok.
+        if !successfully_assigned_varliable {
             Err(RuntimeError::WithMsg(
                 RuntimeErrorCtx {
                     token: name.clone(),
                 },
                 format!("Undefined variable {}", name.lexeme),
             ))
+        } else {
+            Ok(())
         }
     }
 
@@ -197,18 +269,16 @@ impl Environment {
 
     /// Retrieve a variable from the environment
     pub fn get(&self, name: Token) -> RuntimeResult<LoxObject> {
-        if let Some(obj) = self.try_get_local(name.clone()) {
-            Ok(obj)
-        } else if let Some(obj) = self.try_get_global(name.clone()) {
-            Ok(obj)
-        } else {
-            Err(RuntimeError::WithMsg(
+        self.local.as_ref()
+            .map(|ref local_scope| local_scope.get(&name.lexeme))
+            .flatten()
+            .or(self.global.get_variable(&name.lexeme))
+            .ok_or(RuntimeError::WithMsg(
                 RuntimeErrorCtx {
                     token: name.clone(),
                 },
                 format!("Undefined variable {}", name.lexeme),
             ))
-        }
     }
 }
 

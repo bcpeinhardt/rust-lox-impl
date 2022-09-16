@@ -28,29 +28,30 @@ impl LoxCallable for LoxFunction {
         self.params.len()
     }
 
-    fn call(&mut self, interpreter: &mut Interpreter, exec_env: &mut Environment, args: Vec<LoxObject>) -> LoxObject {
+    fn call(
+        &mut self,
+        interpreter: &mut Interpreter,
+        exec_env: &mut Environment,
+        args: Vec<LoxObject>,
+    ) -> LoxObject {
+        exec_env.in_new_local_scope(|e| {
+            for (i, param) in self.params.iter().enumerate() {
+                e.define(&param.lexeme, args[i].clone());
+            }
 
-            exec_env
-            .in_new_local_scope(|e| {
-
-                for (i, param) in self.params.iter().enumerate() {
-                        e
-                        .define(&param.lexeme, args[i].clone());
+            // Execute each statement in the body of the function
+            // If one of them returns something (return stmt),
+            // break early.
+            let mut return_val = LoxObject::Nil;
+            for stmt in self.body.clone().into_iter() {
+                if let Some(val) = interpreter.execute(stmt, e) {
+                    return_val = val;
+                    break;
                 }
-        
-                // Execute each statement in the body of the function
-                // If one of them returns something (return stmt),
-                // break early.
-                let mut return_val = LoxObject::Nil;
-                for stmt in self.body.clone().into_iter() {
-                    if let Some(val) = interpreter.execute(stmt, e) {
-                        return_val = val;
-                        break;
-                    }
-                }
+            }
 
-                return_val
-            })
+            return_val
+        })
     }
 }
 
