@@ -1,5 +1,5 @@
 /// The error reporter is a very simple interface for reporting errors
-/// vie stdout and recording whether or not an error occurred.
+/// via stdout and recording whether or not an error occurred.
 #[derive(Clone)]
 pub struct ErrorReporter {
     pub had_error: bool,
@@ -13,7 +13,7 @@ impl ErrorReporter {
 
     /// Report any error that implements std::fmt::Display. The error
     /// will be print to the console and had_error will be set to true.
-    pub fn error<T: std::fmt::Display>(&mut self, error: T) {
+    pub fn error(&mut self, error: impl std::fmt::Display) {
         eprintln!("{}", error);
         self.had_error = true;
     }

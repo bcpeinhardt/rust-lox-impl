@@ -3,7 +3,7 @@ use thiserror::Error;
 use crate::token::Token;
 
 /// An enum to represent all possible errors encountered while scanning/lexing
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum RuntimeError {
     /// For the moment, I don't want to try to enumerate all the errors so I'll just pass a message.
     #[error("{0}: {1}")]

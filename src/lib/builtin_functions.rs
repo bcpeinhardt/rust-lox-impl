@@ -13,13 +13,19 @@ impl LoxCallable for Clock {
         0usize
     }
 
-    fn call(&mut self, _: &mut Interpreter, _: &mut Environment, _: Vec<LoxObject>) -> LoxObject {
+    fn call(&self, _: &mut Interpreter, _: &mut Environment, _: Vec<LoxObject>) -> LoxObject {
         LoxObject::Number(
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
                 .as_secs_f64(),
         )
+    }
+}
+
+impl std::fmt::Display for Clock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<fn cllock>")
     }
 }
 
@@ -34,12 +40,18 @@ impl LoxCallable for PrintEnv {
     }
 
     fn call(
-        &mut self,
-        interpreter: &mut Interpreter,
+        &self,
+        _interpreter: &mut Interpreter,
         env: &mut Environment,
         _: Vec<LoxObject>,
     ) -> LoxObject {
         println!("{}", env);
         LoxObject::Nil
+    }
+}
+
+impl std::fmt::Display for PrintEnv {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<fn print_env>")
     }
 }

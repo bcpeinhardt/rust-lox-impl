@@ -43,6 +43,10 @@ impl Scanner {
         }
     }
 
+    fn err_ctx(&self) -> ScanErrorCtx {
+        self.line.into()
+    }
+
     /// Scans the source code and produces a Vector of Tokens.
     pub fn scan_tokens(mut self) -> (Vec<Token>, ErrorReporter) {
         while !self.is_at_end() {
@@ -127,9 +131,7 @@ impl Scanner {
             }
             _ => {
                 self.error_reporter
-                    .error(ScanError::UnexpectedCharacter(ScanErrorCtx {
-                        line: self.line,
-                    }));
+                    .error(ScanError::UnexpectedCharacter(self.err_ctx()));
             }
         }
     }
@@ -149,9 +151,7 @@ impl Scanner {
         // If we reach the ending quotation before the end of the file, consume it then add the String token. Otherwise, report the error.
         if self.is_at_end() {
             self.error_reporter
-                .error(ScanError::UnterminatedString(ScanErrorCtx {
-                    line: self.line,
-                }));
+                .error(ScanError::UnterminatedString(self.err_ctx()));
         } else {
             self.advance(); // Closing "
             self.add_token(TokenType::String(strip_quotes(self.get_current_lexeme())));

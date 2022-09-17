@@ -1,20 +1,58 @@
-use crate::{
-    builtin_functions::{Clock, PrintEnv},
-    callable::LoxCallable,
-    function::LoxFunction,
-};
+use crate::callable::LoxCallable;
 
 /// The job of this enum is essentially to map Lox Objects to Rust types. It is our replacement
 /// for the use of java.lang.Object in the Interpreter.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
 pub enum LoxObject {
     String(String),
     Number(f64),
     Boolean(bool),
     Nil,
-    Function(LoxFunction),
-    Clock(Clock),
-    PrintEnv(PrintEnv),
+    Function(Box<dyn LoxCallable>),
+}
+
+impl PartialEq for LoxObject {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Nil, Self::Nil) => true,
+            (Self::String(l), Self::String(r)) => l == r,
+            (Self::Number(l), Self::Number(r)) => l == r,
+            (Self::Boolean(l), Self::Boolean(r)) => l == r,
+            (Self::Function(_), Self::Function(_)) => false,
+            _ => false,
+        }
+    }
+}
+
+impl LoxObject {
+    /// Function casts a LoxObject to a bool
+    pub fn is_truthy(&self) -> bool {
+        match self {
+            // Boolean is its own value
+            LoxObject::Boolean(b) => *b,
+
+            // Nil is False
+            LoxObject::Nil => false,
+
+            // Zero is false
+            LoxObject::Number(n) => *n != 0f64,
+
+            // Everything else is true
+            _ => true,
+        }
+    }
+}
+
+impl TryFrom<LoxObject> for f64 {
+    type Error = ();
+
+    fn try_from(value: LoxObject) -> Result<Self, Self::Error> {
+        if let LoxObject::Number(n) = value {
+            Ok(n)
+        } else {
+            Err(())
+        }
+    }
 }
 
 impl std::fmt::Display for LoxObject {
@@ -35,31 +73,6 @@ impl std::fmt::Display for LoxObject {
             LoxObject::Function(function) => {
                 write!(f, "{}", function)
             }
-            LoxObject::Clock(_) => {
-                write!(f, "<builtin fn clock>")
-            }
-            LoxObject::PrintEnv(_) => {
-                write!(f, "<builtin fn print_env>")
-            }
-        }
-    }
-}
-
-impl LoxObject {
-    /// Function casts a LoxObject to a bool
-    pub fn is_truthy(&self) -> bool {
-        match self {
-            // Boolean is its own value
-            LoxObject::Boolean(b) => *b,
-
-            // Nil is False
-            LoxObject::Nil => false,
-
-            // Zero is false
-            LoxObject::Number(n) => *n != 0f64,
-
-            // Everything else is true
-            _ => true,
         }
     }
 }

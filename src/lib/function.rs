@@ -1,9 +1,7 @@
-use uuid::Uuid;
-
 use crate::{
     callable::LoxCallable,
-    environment::{self, Environment, Scope},
-    grammar::{BlockStmt, FunctionDeclarationStmt, Stmt},
+    environment::Environment,
+    grammar::{FunctionDeclarationStmt, Stmt},
     interpreter::Interpreter,
     object::LoxObject,
     token::Token,
@@ -38,7 +36,7 @@ impl LoxCallable for LoxFunction {
 
     /// Calls the function
     fn call(
-        &mut self,
+        &self,
         interpreter: &mut Interpreter,
         exec_env: &mut Environment,
         args: Vec<LoxObject>,

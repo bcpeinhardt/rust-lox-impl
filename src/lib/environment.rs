@@ -9,7 +9,7 @@ use crate::{
 };
 
 /// Represents a single scope of LoxObjects
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Scope(HashMap<String, LoxObject>);
 
 impl Scope {
@@ -42,7 +42,7 @@ impl Scope {
 }
 
 /// Represents a layering of scopes
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct MultiScope(LinkedList<Scope>);
 
 impl MultiScope {
@@ -54,17 +54,17 @@ impl MultiScope {
     }
 
     /// Bubbling up iterator methods. Iterates from inside out (local scope to outer scope)
-    fn iter(&self) -> impl Iterator<Item = &Scope> {
+    pub fn iter(&self) -> impl Iterator<Item = &Scope> {
         self.0.iter().rev()
     }
 
     /// Bubbling up iterator methods. Iterates from inside out (local scope to outer scope)
-    fn iter_mut(&mut self) -> impl Iterator<Item = &mut Scope> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Scope> {
         self.0.iter_mut().rev()
     }
 
     /// Bubbling up iterator methods. Iterates from inside out (local scope to outer scope)
-    fn into_iter(self) -> impl Iterator<Item = Scope> {
+    pub fn into_iter(self) -> impl Iterator<Item = Scope> {
         self.0.into_iter().rev()
     }
 
@@ -150,7 +150,7 @@ impl MultiScope {
 }
 
 /// Represents a program execution environment.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Environment {
     /// Represents any local scopes created during the execution of the program
     local: Option<MultiScope>,
@@ -169,10 +169,12 @@ impl Environment {
         let mut new_env = Self { local, global };
 
         // Define the builtin functions
-        new_env.global.define("clock", LoxObject::Clock(Clock {}));
         new_env
             .global
-            .define("print_env", LoxObject::PrintEnv(PrintEnv {}));
+            .define("clock", LoxObject::Function(Box::new(Clock {})));
+        new_env
+            .global
+            .define("print_env", LoxObject::Function(Box::new(PrintEnv {})));
 
         new_env
     }

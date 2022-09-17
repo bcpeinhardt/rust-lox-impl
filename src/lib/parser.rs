@@ -76,9 +76,9 @@ impl Parser {
             while self.advance_on(TokenType::Comma) {
                 if params.len() >= 255 {
                     self.error_reporter
-                        .error(ParseError::TooManyFunctionArguments(ParseErrorCtx {
-                            token: left_paren.clone(),
-                        }))
+                        .error(ParseError::TooManyFunctionArguments(
+                            left_paren.clone().into(),
+                        ))
                 }
                 params.push(self.advance_on_or_err(TokenType::Identifier)?);
             }
@@ -273,9 +273,7 @@ impl Parser {
             }
 
             self.error_reporter
-                .error(ParseError::InvalidAssignmentTarget(ParseErrorCtx {
-                    token: equals,
-                }))
+                .error(ParseError::InvalidAssignmentTarget(equals.into()))
         }
 
         Ok(expr)
@@ -415,9 +413,9 @@ impl Parser {
                 if args.len() >= 255 {
                     // We report an error but we dont throw it because we dont need to synchronize.
                     self.error_reporter
-                        .error(ParseError::TooManyFunctionArguments(ParseErrorCtx {
-                            token: self.current_token(),
-                        }));
+                        .error(ParseError::TooManyFunctionArguments(
+                            self.err_ctx(),
+                        ));
                 }
                 args.push(self.expression()?);
             }
@@ -461,9 +459,7 @@ impl Parser {
                 }))
             } else {
                 // We've reached the bottom of the grammar and we don't know what expression this is.
-                Err(ParseError::ExpectedExpression(ParseErrorCtx {
-                    token: self.current_token(),
-                }))
+                Err(ParseError::ExpectedExpression(self.err_ctx()))
             }
         }
     }
@@ -475,9 +471,7 @@ impl Parser {
             Ok(self.advance())
         } else {
             Err(ParseError::ExpectedDifferentToken(
-                ParseErrorCtx {
-                    token: self.current_token(),
-                },
+                self.err_ctx(),
                 tt,
             ))
         }
@@ -557,6 +551,12 @@ impl Parser {
             .get(self.current)
             .expect("Called unwrap from Parser::peek fn on missing token")
             .clone()
+    }
+
+    /// Convenience method for providing the context for a given ParseError.
+    /// If we add to the ParseErrorCtx in the future, we can just update this method.
+    fn err_ctx(&self) -> ParseErrorCtx {
+        self.current_token().into()
     }
 
     /// Returns the previous token in the list

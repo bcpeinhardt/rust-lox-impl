@@ -15,6 +15,14 @@ pub struct ScanErrorCtx {
     pub line: usize,
 }
 
+impl From<usize> for ScanErrorCtx {
+    fn from(line: usize) -> Self {
+        Self {
+            line
+        }
+    }
+}
+
 impl std::fmt::Display for ScanErrorCtx {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "[Line {}]", self.line)

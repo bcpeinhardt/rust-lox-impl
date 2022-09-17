@@ -18,16 +18,18 @@ pub enum ParseError {
 }
 
 #[derive(Debug)]
-pub struct ParseErrorCtx {
-    pub token: Token,
+pub struct ParseErrorCtx { token: Token }
+
+impl From<Token> for ParseErrorCtx {
+    fn from(token: Token) -> Self {
+        Self {
+            token
+        }
+    }
 }
 
 impl std::fmt::Display for ParseErrorCtx {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "[Line {}] Error at '{}'",
-            self.token.line, self.token.lexeme
-        )
+        write!(f, "[Line {}] Error at '{}'", self.token.line, self.token.lexeme)
     }
 }
