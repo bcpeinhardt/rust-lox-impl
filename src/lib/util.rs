@@ -35,7 +35,6 @@ pub fn keywords() -> HashMap<String, TokenType> {
     map.insert("if".to_owned(), TokenType::If);
     map.insert("nil".to_owned(), TokenType::Nil);
     map.insert("or".to_owned(), TokenType::Or);
-    map.insert("print".to_owned(), TokenType::Print);
     map.insert("return".to_owned(), TokenType::Return);
     map.insert("super".to_owned(), TokenType::Super);
     map.insert("this".to_owned(), TokenType::This);

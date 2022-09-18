@@ -5,8 +5,8 @@ use crate::{
     },
     grammar::{
         AssignmentExpr, BinaryExpr, BlockStmt, CallExpr, Expr, ExpressionStmt,
-        FunctionDeclarationStmt, GroupingExpr, IfStmt, LiteralExpr, PrintStmt, ReturnStmt, Stmt,
-        UnaryExpr, VariableDeclarationStmt, VariableExpr, WhileStmt,
+        FunctionDeclarationStmt, GroupingExpr, IfStmt, LiteralExpr, ReturnStmt, Stmt, UnaryExpr,
+        VariableDeclarationStmt, VariableExpr, WhileStmt,
     },
     token::{Token, TokenType},
 };
@@ -26,8 +26,6 @@ pub struct Parser {
 }
 
 impl Parser {
-    /// Takes a list of tokens to be parsed and a StaticErrorReporter object to be enriched
-    /// with errors encountered in the parsing process.
     pub fn new(tokens: Vec<Token>, error_reporter: ErrorReporter) -> Self {
         Self {
             tokens,
@@ -111,8 +109,6 @@ impl Parser {
             self.if_statement()
         } else if self.advance_on(TokenType::For) {
             self.for_statement()
-        } else if self.advance_on(TokenType::Print) {
-            self.print_statement()
         } else if self.advance_on(TokenType::While) {
             self.while_statement()
         } else if self.advance_on(TokenType::Return) {
@@ -236,12 +232,6 @@ impl Parser {
 
         self.advance_on_or_err(TokenType::RightBrace)?;
         Ok(BlockStmt { body: statements })
-    }
-
-    fn print_statement(&mut self) -> ParseResult<Stmt> {
-        let expr = self.expression()?;
-        self.advance_on_or_err(TokenType::SemiColon)?;
-        Ok(Stmt::Print(PrintStmt { expr }))
     }
 
     fn expression_statement(&mut self) -> ParseResult<Stmt> {
@@ -413,9 +403,7 @@ impl Parser {
                 if args.len() >= 255 {
                     // We report an error but we dont throw it because we dont need to synchronize.
                     self.error_reporter
-                        .error(ParseError::TooManyFunctionArguments(
-                            self.err_ctx(),
-                        ));
+                        .error(ParseError::TooManyFunctionArguments(self.err_ctx()));
                 }
                 args.push(self.expression()?);
             }
@@ -431,6 +419,7 @@ impl Parser {
     /// primary -> NUMBER | STRING | true | false | nil
     ///          | ( expression )
     fn primary(&mut self) -> ParseResult<Expr> {
+
         if self.advance_on(TokenType::Identifier) {
             Ok(Expr::Variable(VariableExpr {
                 name: self.previous_token(),
@@ -467,14 +456,9 @@ impl Parser {
     /// Will advance the current token if it has the given token type, otherwise
     /// it will produce an error with the given message.
     fn advance_on_or_err(&mut self, tt: TokenType) -> ParseResult<Token> {
-        if self.current_token_is_a(tt.clone()) {
-            Ok(self.advance())
-        } else {
-            Err(ParseError::ExpectedDifferentToken(
-                self.err_ctx(),
-                tt,
-            ))
-        }
+        self.current_token_is_a(tt.clone())
+            .then(|| self.advance())
+            .ok_or(ParseError::ExpectedDifferentToken(self.err_ctx(), tt))
     }
 
     /// Tries to bring the parser to a statement boundary when an error is encountered.
@@ -490,7 +474,6 @@ impl Parser {
                     TokenType::For,
                     TokenType::Fun,
                     TokenType::If,
-                    TokenType::Print,
                     TokenType::Return,
                     TokenType::Var,
                     TokenType::While,

@@ -55,3 +55,28 @@ impl std::fmt::Display for PrintEnv {
         write!(f, "<fn print_env>")
     }
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Print {}
+
+impl LoxCallable for Print {
+    fn arity(&self) -> usize {
+        1usize
+    }
+
+    fn call(
+        &self,
+        _interpreter: &mut Interpreter,
+        _env: &mut Environment,
+        args: Vec<LoxObject>,
+    ) -> LoxObject {
+        println!("{}", args[0]);
+        LoxObject::Nil
+    }
+}
+
+impl std::fmt::Display for Print {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<fn print>")
+    }
+}

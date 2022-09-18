@@ -1,7 +1,7 @@
 use std::collections::{HashMap, LinkedList};
 
 use crate::{
-    builtin_functions::{Clock, PrintEnv},
+    builtin_functions::{Clock, Print, PrintEnv},
     error::runtime_error::{RuntimeError, RuntimeErrorCtx},
     interpreter::RuntimeResult,
     object::LoxObject,
@@ -175,6 +175,9 @@ impl Environment {
         new_env
             .global
             .define("print_env", LoxObject::Function(Box::new(PrintEnv {})));
+        new_env
+            .global
+            .define("print", LoxObject::Function(Box::new(Print {})));
 
         new_env
     }

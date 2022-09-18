@@ -47,13 +47,6 @@ impl Interpreter {
                 let _ = self.evaluate(stmt.expr, exec_env).map_err(|e| self.error_reporter.error(e));
                 None
             }
-            // A print statement doesn't return anything, so just
-            // evaluate the expression, report an error if there is one, print the result,
-            // and return None.
-            Stmt::Print(stmt) => {
-                let _ = self.evaluate(stmt.expr, exec_env).map_err(|e| self.error_reporter.error(e)).map(|res| println!("{}", res));
-                None
-            }
             // An variable declaration statement doesn't return anything, so just
             // execute the stmt and report an error if there is one.
             // Then return None.
@@ -256,18 +249,24 @@ impl Interpreter {
         }: CallExpr,
         exec_env: &mut Environment,
     ) -> RuntimeResult<LoxObject> {
-
         // Lookup the function in the environment by evaluating the variable.
         let callee = self.evaluate(*callee, exec_env)?;
 
-        // Evaluate each argument of the function 
-        let args = args.into_iter().map(|arg| self.evaluate(arg, exec_env)).collect::<Result<Vec<_>,_>>()?;
+        // Evaluate each argument of the function
+        let args = args
+            .into_iter()
+            .map(|arg| self.evaluate(arg, exec_env))
+            .collect::<Result<Vec<_>, _>>()?;
 
         if let LoxObject::Function(function) = callee {
             if args.len() != function.arity() {
                 Err(RuntimeError::new(
                     closing_paren,
-                    format!("Expect {} arguments but got {}", function.arity(), args.len()),
+                    format!(
+                        "Expect {} arguments but got {}",
+                        function.arity(),
+                        args.len()
+                    ),
                 ))
             } else {
                 Ok(function.call(self, exec_env, args))

@@ -17,9 +17,7 @@ pub struct ScanErrorCtx {
 
 impl From<usize> for ScanErrorCtx {
     fn from(line: usize) -> Self {
-        Self {
-            line
-        }
+        Self { line }
     }
 }
 
