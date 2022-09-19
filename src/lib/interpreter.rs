@@ -44,29 +44,34 @@ impl Interpreter {
             // evaluate the expr and report an error if there is one.
             // Then return None.
             Stmt::Expression(stmt) => {
-                let _ = self.evaluate(stmt.expr, exec_env).map_err(|e| self.error_reporter.error(e));
+                let _ = self
+                    .evaluate(stmt.expr, exec_env)
+                    .map_err(|e| self.error_reporter.error(e));
                 None
             }
             // An variable declaration statement doesn't return anything, so just
             // execute the stmt and report an error if there is one.
             // Then return None.
             Stmt::VariableDeclaration(var_dec_stmt) => {
-                let _ = self.variable_statement(var_dec_stmt, exec_env).map_err(|e| self.error_reporter.error(e));
+                let _ = self
+                    .variable_statement(var_dec_stmt, exec_env)
+                    .map_err(|e| self.error_reporter.error(e));
                 None
             }
             // Executing a successfully parsed block stmt won't fail,
             // (if the body fails to execute because of some error, it will
             // be handled by another branch of this match stmt)
             // so just bubble up the optional return value.
-            Stmt::Block(block_stmt) => {
-                self.execute_block(block_stmt, exec_env)
-            }
-            // An if stmt can fail (because it has to evaluate the condition) 
+            Stmt::Block(block_stmt) => self.execute_block(block_stmt, exec_env),
+            // An if stmt can fail (because it has to evaluate the condition)
             // and can have a return value, so if there's an
-            // error report it and return `None`, or if no error bubble up the 
+            // error report it and return `None`, or if no error bubble up the
             // optional return value.
-            Stmt::If(if_stmt) => self.if_statement(if_stmt, exec_env).map_err(|e| self.error_reporter.error(e)).ok().flatten()
-            ,
+            Stmt::If(if_stmt) => self
+                .if_statement(if_stmt, exec_env)
+                .map_err(|e| self.error_reporter.error(e))
+                .ok()
+                .flatten(),
             // Interpreting a function declaration statement doesn't return anything
             // and can't fail, so just
             // execute the stmt and return None.
@@ -76,14 +81,19 @@ impl Interpreter {
             }
             // Return statement always returns something, hence the name. Report any error then throw it away
             // and return the return value.
-            Stmt::Return(return_stmt) => {
-                self.return_statement(return_stmt, exec_env).map_err(|e| self.error_reporter.error(e)).ok()
-            }
-            // A while stmt can fail (because it has to evaluate the condition) 
+            Stmt::Return(return_stmt) => self
+                .return_statement(return_stmt, exec_env)
+                .map_err(|e| self.error_reporter.error(e))
+                .ok(),
+            // A while stmt can fail (because it has to evaluate the condition)
             // and can have a return value, so if there's an
-            // error report it and return `None`, or if no error bubble up the 
+            // error report it and return `None`, or if no error bubble up the
             // optional return value.
-            Stmt::While(while_stmt) => self.while_statement(while_stmt, exec_env).map_err(|e| self.error_reporter.error(e)).ok().flatten(),
+            Stmt::While(while_stmt) => self
+                .while_statement(while_stmt, exec_env)
+                .map_err(|e| self.error_reporter.error(e))
+                .ok()
+                .flatten(),
         }
     }
 
@@ -285,9 +295,12 @@ impl Interpreter {
         BinaryExpr { lhs, operator, rhs }: BinaryExpr,
         exec_env: &mut Environment,
     ) -> RuntimeResult<LoxObject> {
+        // Evaluate the left side of the expression
         let left = self.evaluate(*lhs, exec_env)?;
+
+        // If it's `true or something` or `false and something`, short circuit
+        // with the value on the left.
         if (operator.token_type == TokenType::Or && left.is_truthy()) || !left.is_truthy() {
-            // Short circuit
             Ok(left)
         } else {
             // Doesn't short circuit, must evaluate rhs
@@ -343,7 +356,6 @@ impl Interpreter {
         let right = self.evaluate(*rhs, exec_env)?;
 
         match operator.token_type {
-            // We derive PartialEq on LoxObject so these are freebies
             TokenType::EqualEqual => Ok(LoxObject::Boolean(left == right)),
             TokenType::BangEqual => Ok(LoxObject::Boolean(left != right)),
 
@@ -365,7 +377,7 @@ impl Interpreter {
             _ => {
                 // The rest of the operators only apply to numbers, so we can build the error
                 // and try to downcast the LoxObjects into f64s once, then apply them appropriately.
-                let error: RuntimeError = RuntimeError::new(
+                let error = RuntimeError::new(
                     operator.clone(),
                     format!(
                         "Operator `{}` only applies to number types",
@@ -373,7 +385,7 @@ impl Interpreter {
                     ),
                 );
                 let l = f64::try_from(left).map_err(|_| error.clone())?;
-                let r = f64::try_from(right).map_err(|_| error.clone())?;
+                let r = f64::try_from(right).map_err(|_| error)?;
 
                 match operator.token_type {
                     TokenType::Minus => Ok(LoxObject::Number(l - r)),

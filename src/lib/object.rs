@@ -18,6 +18,10 @@ impl PartialEq for LoxObject {
             (Self::String(l), Self::String(r)) => l == r,
             (Self::Number(l), Self::Number(r)) => l == r,
             (Self::Boolean(l), Self::Boolean(r)) => l == r,
+
+            // Functions are never equal, even if the code is
+            // equivalent, functions enclose different environments, so semantically
+            // in Lox they should never be the same.
             (Self::Function(_), Self::Function(_)) => false,
             _ => false,
         }
@@ -43,6 +47,9 @@ impl LoxObject {
     }
 }
 
+/// Implemented this as a convenience. I'm willing to bet there's
+/// a crate aimed at deriving these for all associated values,
+/// like a sort of cast for enums.
 impl TryFrom<LoxObject> for f64 {
     type Error = ();
 

@@ -1,4 +1,5 @@
 use crate::{
+    bubble_closure::ThenTry,
     error::{
         error_reporter::ErrorReporter,
         parse_error::{ParseError, ParseErrorCtx},
@@ -34,11 +35,14 @@ impl Parser {
         }
     }
 
+    /// Parses the provided list of Tokens into Lox Statements.
+    /// Uses go style tuple error return so that multiple
+    /// errors can be collected.
     pub fn parse(mut self) -> (Vec<Stmt>, ErrorReporter) {
         let mut statements = vec![];
 
         while !self.is_at_end() {
-            if let Some(stmt) = self.declaration() {
+            if let Some(stmt) = self.parse_item() {
                 statements.push(stmt)
             }
         }
@@ -46,67 +50,90 @@ impl Parser {
         (statements, self.error_reporter)
     }
 
-    fn declaration(&mut self) -> Option<Stmt> {
-        let res = if self.advance_on(TokenType::Fun) {
-            self.function()
-        } else if self.advance_on(TokenType::Var) {
-            self.var_declaration()
-        } else {
-            self.statement()
-        };
-
-        match res {
-            Ok(stmt) => Some(stmt),
-            Err(e) => {
+    /// Tries to parse a single statement, and returns the statement if succsessful
+    /// or reports an error and syncronizes the parser.
+    fn parse_item(&mut self) -> Option<Stmt> {
+        self.declaration()
+            .map_err(|e| {
                 self.error_reporter.error(e);
                 self.synchronize();
-                None
-            }
+            })
+            .ok()
+    }
+
+    /// A declaration is the top level parsable entity. Tries to parse
+    /// a function declaration or a variable declaration, or defaults
+    /// to some other kind of statement.
+    fn declaration(&mut self) -> ParseResult<Stmt> {
+        if self.advance_on(TokenType::Fun) {
+            self.function_declaration()
+                .map(|stmt| Stmt::FunctionDeclaration(stmt))
+        } else if self.advance_on(TokenType::Var) {
+            self.var_declaration()
+                .map(|stmt| Stmt::VariableDeclaration(stmt))
+        } else {
+            self.statement()
         }
     }
 
-    fn function(&mut self) -> ParseResult<Stmt> {
+    /// Parses a function declaration statement. Triggered when a `fun` token is
+    /// encountered.
+    fn function_declaration(&mut self) -> ParseResult<FunctionDeclarationStmt> {
+        // Parse the function name and the opening parenthesis.
         let name = self.advance_on_or_err(TokenType::Identifier)?;
         let left_paren = self.advance_on_or_err(TokenType::LeftParen)?;
+
+        // Parse the function parameters if any
         let mut params = vec![];
         if !self.current_token_is_a(TokenType::RightParen) {
+            // Parse the first parameter.
             params.push(self.advance_on_or_err(TokenType::Identifier)?);
+
+            // Parse the comma and the next parameter if there is one.
             while self.advance_on(TokenType::Comma) {
+                params.push(self.advance_on_or_err(TokenType::Identifier)?);
+
+                // We set a rule that functions can have no more than 255 parameters.
                 if params.len() >= 255 {
                     self.error_reporter
                         .error(ParseError::TooManyFunctionArguments(
                             left_paren.clone().into(),
                         ))
                 }
-                params.push(self.advance_on_or_err(TokenType::Identifier)?);
             }
         }
+
+        // Consume the closing parenthesis and the body of the function as a block statement
         self.advance_on_or_err(TokenType::RightParen)?;
         self.advance_on_or_err(TokenType::LeftBrace)?;
         let body = self.block_statement()?.body;
-        Ok(Stmt::FunctionDeclaration(FunctionDeclarationStmt {
-            name,
-            params,
-            body,
-        }))
+
+        // Return the function declaration.
+        Ok(FunctionDeclarationStmt { name, params, body })
     }
 
-    fn var_declaration(&mut self) -> ParseResult<Stmt> {
+    /// Parses a variable declaration. Triggered when a `var` keyword is encountered.
+    fn var_declaration(&mut self) -> ParseResult<VariableDeclarationStmt> {
+        // Parse the variable name
         let name = self.advance_on_or_err(TokenType::Identifier)?;
-        let mut initializer = None;
-        if self.advance_on(TokenType::Equal) {
-            initializer = Some(self.expression()?);
-        }
+
+        // If an `=` token is present, parse the expression after it as the initial value
+        // for the variable.
+        let initializer = self
+            .advance_on(TokenType::Equal)
+            .then_try(|| self.expression())?;
+
+        // Consume the semi-colon to end the statement
         self.advance_on_or_err(TokenType::SemiColon)?;
-        Ok(Stmt::VariableDeclaration(VariableDeclarationStmt {
-            name,
-            initializer,
-        }))
+
+        // Return the variable declaration.
+        Ok(VariableDeclarationStmt { name, initializer })
     }
 
+    /// Handles statements which are not declarations.
     fn statement(&mut self) -> ParseResult<Stmt> {
         if self.advance_on(TokenType::If) {
-            self.if_statement()
+            self.if_statement().map(|stmt| Stmt::If(stmt))
         } else if self.advance_on(TokenType::For) {
             self.for_statement()
         } else if self.advance_on(TokenType::While) {
@@ -127,7 +154,7 @@ impl Parser {
         let initializer = if self.advance_on(TokenType::SemiColon) {
             None
         } else if self.advance_on(TokenType::Var) {
-            Some(self.var_declaration()?)
+            Some(Stmt::VariableDeclaration(self.var_declaration()?))
         } else {
             Some(self.expression_statement()?)
         };
@@ -204,7 +231,7 @@ impl Parser {
         }))
     }
 
-    fn if_statement(&mut self) -> ParseResult<Stmt> {
+    fn if_statement(&mut self) -> ParseResult<IfStmt> {
         self.advance_on_or_err(TokenType::LeftParen)?;
         let condition = self.expression()?;
         self.advance_on_or_err(TokenType::RightParen)?;
@@ -214,18 +241,18 @@ impl Parser {
         } else {
             None
         };
-        Ok(Stmt::If(IfStmt {
+        Ok(IfStmt {
             condition,
             then_branch,
             else_branch,
-        }))
+        })
     }
 
     fn block_statement(&mut self) -> ParseResult<BlockStmt> {
         let mut statements = vec![];
 
         while !self.is_at_end() && !self.current_token_is_a(TokenType::RightBrace) {
-            if let Some(stmt) = self.declaration() {
+            if let Some(stmt) = self.parse_item() {
                 statements.push(stmt);
             }
         }
@@ -419,7 +446,6 @@ impl Parser {
     /// primary -> NUMBER | STRING | true | false | nil
     ///          | ( expression )
     fn primary(&mut self) -> ParseResult<Expr> {
-
         if self.advance_on(TokenType::Identifier) {
             Ok(Expr::Variable(VariableExpr {
                 name: self.previous_token(),
@@ -448,6 +474,7 @@ impl Parser {
                 }))
             } else {
                 // We've reached the bottom of the grammar and we don't know what expression this is.
+                // println!("{}: {}", self.previous_token(), self.previous_token().token_type);
                 Err(ParseError::ExpectedExpression(self.err_ctx()))
             }
         }

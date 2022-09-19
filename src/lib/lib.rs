@@ -1,3 +1,4 @@
+pub mod bubble_closure;
 pub mod builtin_functions;
 pub mod callable;
 pub mod environment;

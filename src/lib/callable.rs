@@ -3,7 +3,8 @@ use dyn_clone::DynClone;
 use crate::{environment::Environment, interpreter::Interpreter, object::LoxObject};
 
 /// This trait is implemented on any Lox Structure that acts like a function
-/// Requires Clone and Display.
+/// Requires Clone and Display. We also implement Clone for Box<dyn LoxCallable>
+/// so that we can have a clonable trait object.
 pub trait LoxCallable: DynClone + std::fmt::Display {
     /// The number of parameters
     fn arity(&self) -> usize;
