@@ -62,15 +62,21 @@ for (i = 17; i <= 20; i = i + 1) {
 var d;
 
 
-// var g = "global";
-// {
-//     fun showG() {
-//         print g;
-//     }
+var g = "global";
+{
+    fun showG() {
+        print(g);
+    }
 
-//     showG();
-//     var g = "local";
-//     showG();
-//     print_env();
-// }
+    showG();
+    var g = "local";
+    showG();
+}
+
+var x = 2;
+fun inc_x() {
+    x = x + 1;
+}
+inc_x();
+print(x);
 

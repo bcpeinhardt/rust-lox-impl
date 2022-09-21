@@ -1,6 +1,6 @@
 use crate::{
     callable::LoxCallable,
-    environment::Environment,
+    environment::{Environment, Scope},
     grammar::{FunctionDeclarationStmt, Stmt},
     interpreter::Interpreter,
     object::LoxObject,
@@ -8,7 +8,7 @@ use crate::{
 };
 
 /// Represents a Lox Function Object
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct LoxFunction {
     /// The token of the function name from the function declaration
     name: Token,
@@ -19,12 +19,21 @@ pub struct LoxFunction {
 
     /// The parsed list of statements from the body of the function declaration.
     body: Vec<Stmt>,
+
+    /// This is a basically a place for the function to store private state between calls.
+    /// Lox functions are closures, and when they are declared, if they reference 
+    /// a variable from an enclosing scope, they should basically get a copy of that 
+    /// variable as private state.
+    /// 
+    /// The book does an entire chapter implementing variable resolving and binding 
+    /// as a separate pass. 
+    state: Scope
 }
 
 impl LoxFunction {
     /// Construct a function object from the function declaration statement parsed by the parser.
     pub fn from(FunctionDeclarationStmt { name, params, body }: FunctionDeclarationStmt) -> Self {
-        Self { name, params, body }
+        Self { name, params, body, state: Scope::new() }
     }
 }
 

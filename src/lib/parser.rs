@@ -24,6 +24,9 @@ pub struct Parser {
 
     /// Enrichable object for tracking static errors through scanning and parsing
     error_reporter: ErrorReporter,
+
+    /// Used to keep track of how many local scopes deep we are (for variable resolving)
+    depth: usize
 }
 
 impl Parser {
@@ -32,6 +35,7 @@ impl Parser {
             tokens,
             current: 0,
             error_reporter,
+            depth: 0
         }
     }
 
@@ -79,6 +83,8 @@ impl Parser {
     /// Parses a function declaration statement. Triggered when a `fun` token is
     /// encountered.
     fn function_declaration(&mut self) -> ParseResult<FunctionDeclarationStmt> {
+
+
         // Parse the function name and the opening parenthesis.
         let name = self.advance_on_or_err(TokenType::Identifier)?;
         let left_paren = self.advance_on_or_err(TokenType::LeftParen)?;
@@ -106,6 +112,8 @@ impl Parser {
         // Consume the closing parenthesis and the body of the function as a block statement
         self.advance_on_or_err(TokenType::RightParen)?;
         self.advance_on_or_err(TokenType::LeftBrace)?;
+
+        
         let body = self.block_statement()?.body;
 
         // Return the function declaration.
@@ -135,18 +143,36 @@ impl Parser {
         if self.advance_on(TokenType::If) {
             self.if_statement().map(|stmt| Stmt::If(stmt))
         } else if self.advance_on(TokenType::For) {
+            // the for statement desugars to multiple wrapped
+            // statements, which we handle in the function.
             self.for_statement()
         } else if self.advance_on(TokenType::While) {
-            self.while_statement()
+            self.while_statement().map(|stmt| Stmt::While(stmt))
         } else if self.advance_on(TokenType::Return) {
-            self.return_statement()
+            self.return_statement().map(|stmt| Stmt::Return(stmt))
         } else if self.advance_on(TokenType::LeftBrace) {
-            Ok(Stmt::Block(self.block_statement()?))
+            self.block_statement().map(|stmt| Stmt::Block(stmt))
         } else {
             self.expression_statement()
         }
     }
 
+    /// Parses a for loop, and creates a desugared while loop representation
+    /// ```
+    /// for (var i = 1; i <= 10; i = i + 1) {
+    ///     print(i);
+    /// }
+    /// ```
+    /// caramalizes to
+    /// ```
+    /// {
+    ///     var i = 1;
+    ///     while(i <= 10) {
+    ///         print(i);
+    ///         i = i + 1;
+    ///     }
+    /// }
+    /// ```
     fn for_statement(&mut self) -> ParseResult<Stmt> {
         self.advance_on_or_err(TokenType::LeftParen)?;
 
@@ -198,6 +224,7 @@ impl Parser {
             body: Box::new(body),
         });
 
+        // Make the body a block stmt which includes the initializer and the while loop
         if let Some(init) = initializer {
             body = Stmt::Block(BlockStmt {
                 body: vec![init, body],
@@ -207,40 +234,42 @@ impl Parser {
         Ok(body)
     }
 
-    fn while_statement(&mut self) -> ParseResult<Stmt> {
+    /// Parses a while loop
+    fn while_statement(&mut self) -> ParseResult<WhileStmt> {
         self.advance_on_or_err(TokenType::LeftParen)?;
         let condition = self.expression()?;
         self.advance_on_or_err(TokenType::RightParen)?;
         let body = self.statement()?;
-        Ok(Stmt::While(WhileStmt {
+        Ok(WhileStmt {
             condition,
             body: Box::new(body),
-        }))
+        })
     }
 
-    fn return_statement(&mut self) -> ParseResult<Stmt> {
+    /// Parse a return statement
+    fn return_statement(&mut self) -> ParseResult<ReturnStmt> {
         let return_keyword = self.previous_token();
         let mut value = None;
         if !self.current_token_is_a(TokenType::SemiColon) {
             value = Some(self.expression()?);
         }
         self.advance_on_or_err(TokenType::SemiColon)?;
-        Ok(Stmt::Return(ReturnStmt {
+        Ok(ReturnStmt {
             return_keyword,
             value,
-        }))
+        })
     }
 
+    /// Parses an if statement
     fn if_statement(&mut self) -> ParseResult<IfStmt> {
         self.advance_on_or_err(TokenType::LeftParen)?;
         let condition = self.expression()?;
         self.advance_on_or_err(TokenType::RightParen)?;
         let then_branch = Box::new(self.statement()?);
-        let else_branch = if self.advance_on(TokenType::Else) {
-            Some(Box::new(self.statement()?))
-        } else {
-            None
-        };
+        let else_branch = self
+            .advance_on(TokenType::Else)
+            .then_try(|| self.statement())?
+            .map(|stmt| Box::new(stmt));
         Ok(IfStmt {
             condition,
             then_branch,
@@ -248,7 +277,9 @@ impl Parser {
         })
     }
 
+    /// Parses a block stmt
     fn block_statement(&mut self) -> ParseResult<BlockStmt> {
+        self.depth += 1;
         let mut statements = vec![];
 
         while !self.is_at_end() && !self.current_token_is_a(TokenType::RightBrace) {
@@ -258,9 +289,11 @@ impl Parser {
         }
 
         self.advance_on_or_err(TokenType::RightBrace)?;
+        self.depth -= 1;
         Ok(BlockStmt { body: statements })
     }
 
+    /// Parses an expression statement
     fn expression_statement(&mut self) -> ParseResult<Stmt> {
         let expr = self.expression()?;
         self.advance_on_or_err(TokenType::SemiColon)?;
@@ -296,6 +329,7 @@ impl Parser {
         Ok(expr)
     }
 
+    /// Parses an or expression
     fn or(&mut self) -> ParseResult<Expr> {
         let mut expr = self.and()?;
 
@@ -312,6 +346,7 @@ impl Parser {
         Ok(expr)
     }
 
+    /// Parses an and expression
     fn and(&mut self) -> ParseResult<Expr> {
         let mut expr = self.equality()?;
 
@@ -408,9 +443,14 @@ impl Parser {
         }
     }
 
+    /// Parses a function call expression
     fn call(&mut self) -> ParseResult<Expr> {
         let mut expr = self.primary()?;
 
+        // We loop to support multiple calls for functions that produce functions
+        // ```
+        // iProduceAFunc()();
+        // ```
         loop {
             if self.advance_on(TokenType::LeftParen) {
                 expr = self.finish_call(expr)?;

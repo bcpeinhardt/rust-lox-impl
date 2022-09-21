@@ -45,7 +45,7 @@ pub struct LiteralExpr {
 /// Represents a single variable.
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariableExpr {
-    pub name: Token,
+    pub name: Token
 }
 
 /// Represents variable assignment
